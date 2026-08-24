@@ -8,6 +8,8 @@ Quick navigation reference for every file and feature.
 
 | I need to... | Go to |
 |---|---|
+| Change logo / brand assets | `public/brand/` (svg/, png/, anime/) |
+| Change favicon | `app/layout.tsx` → metadata.icons |
 | Change login page | `app/(auth)/login/page.tsx` |
 | Change email list | `components/layout/MessageList.tsx` |
 | Change bulk actions / checkboxes / drag | `components/layout/MessageList.tsx` |
@@ -55,8 +57,14 @@ Quick navigation reference for every file and feature.
 ├── tailwind.config.ts
 ├── tsconfig.json
 │
+├── public/
+│   └── brand/
+│       ├── svg/                      ← Logos vectoriels (icone, horizontal, vertical + mono/négatif)
+│       ├── png/                      ← Exports PNG (favicon@64, icone@512/1024, logos @2400/1600)
+│       └── anime/                    ← Logo animé (synapmail-anime.svg)
+│
 ├── app/
-│   ├── layout.tsx                    ← Root: ThemeProvider + IntlProvider
+│   ├── layout.tsx                    ← Root: ThemeProvider + IntlProvider + favicon metadata
 │   ├── globals.css                   ← CSS variables (dark/light)
 │   ├── (auth)/                       ← Public routes
 │   │   ├── login/page.tsx

@@ -5,6 +5,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2026-08-25] — Brand identity integration
+
+### Added
+- **Brand kit** — complete asset set in `public/brand/` (SVG, PNG, animated)
+  - `svg/` — icone, icone-negatif, icone-mono, logo-horizontal, logo-vertical, variantes mono/négatif
+  - `png/` — favicon@64, icone@512, icone@1024, horizontal@2400, vertical@1600, variantes mono/négatif
+  - `anime/` — `synapmail-anime.svg` (logo animé)
+- **Favicon & apple-touch-icon** — `app/layout.tsx` metadata pointe vers `synapmail-favicon@64.png` et `synapmail-icone@512.png`
+- **Logo animé sur les pages auth** — login et register affichent `synapmail-anime.svg` à la place de l'icône Mail générique
+- **Logo dans la sidebar** — `synapmail-icone-negatif.svg` (version blanche) remplace le carré bleu + icône Mail
+- **Logo dans la mobile top bar** — `synapmail-icone.svg` (couleur) dans `AppShell`
+- **README mis à jour** — logo horizontal centré en tête du README GitHub + badges réalignés
+
 ## [2026-08-24] — Drag & drop, context menu, keyboard shortcuts, notifications, draft auto-save
 
 ### Added
