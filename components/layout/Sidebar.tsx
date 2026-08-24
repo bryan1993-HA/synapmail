@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
   Mail, Send, FileText, AlertTriangle, Trash2,
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import type { EmailAccount } from '@/types/account'
 
@@ -54,15 +54,27 @@ interface SidebarProps {
 export function Sidebar({ onClose }: SidebarProps) {
   const t = useTranslations('mail')
   const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const currentFolder = searchParams.get('folder') ?? 'INBOX'
+  const [currentFolder, setCurrentFolder] = useState('INBOX')
   const [accountOpen, setAccountOpen] = useState(false)
-
-  const { data: foldersData } = useSWR<{ data: { name: string; path: string; special: SpecialKey }[] }>(
-    '/api/folders',
-    fetcher,
-    { revalidateOnFocus: false }
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null)
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(
+    typeof window !== 'undefined' ? localStorage.getItem('synapmail:activeAccountId') : null
   )
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      setCurrentFolder(params.get('folder') ?? 'INBOX')
+    }
+  }, [pathname])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setActiveAccountId((e as CustomEvent<string>).detail)
+    }
+    window.addEventListener('synapmail:account-change', handler)
+    return () => window.removeEventListener('synapmail:account-change', handler)
+  }, [])
 
   const { data: accountsData } = useSWR<{ data: EmailAccount[] }>(
     '/api/accounts',
@@ -70,30 +82,56 @@ export function Sidebar({ onClose }: SidebarProps) {
     { revalidateOnFocus: false }
   )
 
+  const accounts = accountsData?.data ?? []
+  const hasMultipleAccounts = accounts.length > 1
+  const activeAccount = accounts.find(a => a.id === activeAccountId) ?? accounts.find(a => a.isDefault) ?? accounts[0]
+
+  const resolvedAccountId = activeAccount?.id ?? null
+
+  const { data: foldersData } = useSWR<{ data: { name: string; path: string; special: SpecialKey }[] }>(
+    resolvedAccountId ? `/api/folders?account=${resolvedAccountId}` : '/api/folders',
+    fetcher,
+    { revalidateOnFocus: false }
+  )
+
   const folders = foldersData?.data?.length ? foldersData.data : FALLBACK_FOLDERS
   const specialFolders = folders.filter(f => f.special)
   const customFolders = folders.filter(f => !f.special)
-  const accounts = accountsData?.data ?? []
-  const hasMultipleAccounts = accounts.length > 1
-
-  const getStoredAccountId = () => {
-    if (typeof window === 'undefined') return null
-    return localStorage.getItem('synapmail:activeAccountId')
-  }
-
-  const activeAccountId = getStoredAccountId()
-  const activeAccount = accounts.find(a => a.id === activeAccountId) ?? accounts.find(a => a.isDefault) ?? accounts[0]
 
   const switchAccount = (id: string) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('synapmail:activeAccountId', id)
       window.dispatchEvent(new CustomEvent('synapmail:account-change', { detail: id }))
     }
+    setActiveAccountId(id)
     setAccountOpen(false)
   }
 
   const handleFolderClick = () => {
     onClose?.()
+  }
+
+  const handleDragOver = (e: React.DragEvent, path: string) => {
+    if (!e.dataTransfer.types.includes('application/synapmail')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverPath(path)
+  }
+
+  const handleDragLeave = () => setDragOverPath(null)
+
+  const handleDrop = async (e: React.DragEvent, destinationPath: string) => {
+    e.preventDefault()
+    setDragOverPath(null)
+    const raw = e.dataTransfer.getData('application/synapmail')
+    if (!raw) return
+    const { uids, accountId, folder } = JSON.parse(raw) as { uids: string[]; accountId: string; folder: string }
+    if (!uids?.length || destinationPath === folder) return
+    await fetch('/api/messages/bulk', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uids, action: 'move', accountId, folder, destination: destinationPath }),
+    })
   }
 
   return (
@@ -164,16 +202,22 @@ export function Sidebar({ onClose }: SidebarProps) {
           const Icon = SPECIAL_ICONS[folder.special!] ?? Folder
           const label = SPECIAL_LABELS[folder.special!]
           const isActive = pathname.startsWith('/mail') && currentFolder === folder.path
+          const isDragOver = dragOverPath === folder.path
           return (
             <Link
               key={folder.path}
               href={`/mail?folder=${encodeURIComponent(folder.path)}`}
               onClick={handleFolderClick}
+              onDragOver={e => handleDragOver(e, folder.path)}
+              onDragLeave={handleDragLeave}
+              onDrop={e => handleDrop(e, folder.path)}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                isActive
-                  ? 'bg-white/15 text-white font-medium'
-                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/8'
+                isDragOver
+                  ? 'bg-blue-500/30 ring-1 ring-blue-400 text-white'
+                  : isActive
+                    ? 'bg-white/15 text-white font-medium'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/8'
               )}
             >
               <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-blue-400' : '')} />
@@ -190,16 +234,22 @@ export function Sidebar({ onClose }: SidebarProps) {
             </div>
             {customFolders.map(folder => {
               const isActive = pathname.startsWith('/mail') && currentFolder === folder.path
+              const isDragOver = dragOverPath === folder.path
               return (
                 <Link
                   key={folder.path}
                   href={`/mail?folder=${encodeURIComponent(folder.path)}`}
                   onClick={handleFolderClick}
+                  onDragOver={e => handleDragOver(e, folder.path)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={e => handleDrop(e, folder.path)}
                   className={cn(
                     'flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-all',
-                    isActive
-                      ? 'bg-white/15 text-white font-medium'
-                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/8'
+                    isDragOver
+                      ? 'bg-blue-500/30 ring-1 ring-blue-400 text-white'
+                      : isActive
+                        ? 'bg-white/15 text-white font-medium'
+                        : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/8'
                   )}
                 >
                   <Folder className="w-3.5 h-3.5 shrink-0" />

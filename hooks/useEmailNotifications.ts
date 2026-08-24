@@ -39,12 +39,32 @@ export function useEmailNotifications(folder: string, accountId?: string) {
 
         if (Notification.permission === 'granted') {
           try {
-            new Notification('Nouveau message', {
-              body: `${newest.from.name || newest.from.address}: ${newest.subject}`,
+            const senderName = newest.from.name || newest.from.address
+            const preview = newest.preview
+              ? newest.preview.slice(0, 120)
+              : newest.subject
+
+            const notification = new Notification(`${senderName}`, {
+              body: `${newest.subject}${preview && preview !== newest.subject ? `\n${preview}` : ''}`,
               icon: '/favicon.ico',
+              tag: `synapmail-${newest.uid}`, // prevent duplicates
+              requireInteraction: false,
+              silent: false,
             })
+
+            notification.onclick = () => {
+              window.focus()
+              window.dispatchEvent(new CustomEvent('synapmail:open-message', {
+                detail: {
+                  uid: newest.uid,
+                  accountId: newest.accountId || accountId,
+                  folder,
+                },
+              }))
+              notification.close()
+            }
           } catch {
-            // Notifications not supported in this context
+            // Notifications not supported
           }
         }
       }

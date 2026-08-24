@@ -1,34 +1,64 @@
 # Synapmail
 
-> **Self-hosted, open-source email client — IMAP/SMTP, multi-account, rich editor**
+> **Self-hosted, open-source, AI-powered email client — IMAP/SMTP, multi-account, rich editor**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](https://www.docker.com/)
 
-> **Warning** — Active Development. The project is functional but APIs may change between versions.
+> **Active Development** — Functional and production-deployed. APIs may change between versions.
 
 ---
 
 ## Features
 
-- **Three-column layout** — Sidebar / Message list / Reading pane, fully responsive
-- **Multi-user** — Each user manages their own email accounts and settings
-- **Multi-account** — Connect any number of IMAP/SMTP mailboxes per user
-- **Rich email editor** — Tiptap-powered composer with formatting, links, images, attachments
-- **Dark / Light theme** — System detection, manual override
-- **Full internationalization** — English and French built-in, easy to extend
-- **Email signatures** — Per-account rich-text signatures
-- **Starred & flagged messages** — Visual indicators and filter
-- **Real-time notifications** — Server-Sent Events for new mail alerts
-- **Encrypted credential storage** — Email passwords stored AES-256-GCM encrypted
-- **Admin panel** — User management, account overview
-- **Search** — Full-text search across IMAP folders
-- **Thread view** — Conversation grouping
-- **Attachment support** — Inline preview for images and PDFs (no download required), download always available
-- **Paperclip indicator** — Message list shows attachment icon next to date
-- **Docker-first deployment** — One command to run
+### Email client
+- **Three-column layout** — Sidebar / Message list / Reading pane, fully responsive (mobile + tablet + desktop)
+- **Thread view** — Conversation grouping by normalized subject (Gmail-style)
+- **Multi-account** — Connect any number of IMAP/SMTP mailboxes; folder list updates instantly per account
+- **Account setup wizard** — Auto-configures Gmail, Outlook, Yahoo, iCloud, Proton Mail, OVH/Orange/Free and custom servers; detects provider from email domain
+
+### Message actions
+- **Bulk selection** — Hover avatar → checkbox; select multiple messages and apply actions in one click
+- **Bulk mark read / unread** — With optimistic local update
+- **Bulk move to folder** — Dropdown of all IMAP folders
+- **Bulk delete**
+- **Drag & drop to folder** — Drag one or multiple messages onto any sidebar folder; highlighted drop target
+- **Right-click context menu** — Mark read/unread, star/unstar, move to folder (hover submenu), delete
+- **Keyboard shortcuts** — `c` compose, `r` reply, `a` reply all, `f` forward, `Delete`/`#` delete, `u` mark unread, `/` search, `Escape` close compose
+- **Star / flag messages**
+
+### Composition
+- **Rich editor** — Tiptap: bold, italic, underline, strikethrough, alignment, lists, links, headings, blockquote, code, HR
+- **Reply / Reply All / Forward**
+- **CC and BCC** — Toggle fields individually
+- **Forward with attachments** — Original attachments pre-listed as removable chips; re-fetched from IMAP server-side and sent
+- **Email signatures** — Per-account rich-text signatures with switcher; auto-insert on compose
+- **Draft auto-save** — Compose window auto-saves to localStorage every 3 s; restored on next open with "Brouillon restauré" badge
+
+### Reading pane
+- **Inline attachment preview** — Images as lightbox thumbnails, PDFs in native browser viewer
+- **To / CC recipients** visible in message header
+- **Auto mark-as-read** on open
+
+### Notifications & real-time
+- **Desktop notifications** — Browser Notification API; click opens the message directly in the app
+- **Server-Sent Events** — Real-time new mail polling (30 s per account)
+
+### Settings & admin
+- **User profile** — Name and password change
+- **Dark / Light / System theme**
+- **Full i18n** — English and French built-in, easy to extend
+- **Admin panel** — User management (create, role toggle, delete)
+- **Microsoft OAuth2** — Connect Outlook/Live/Hotmail via XOAUTH2 (no password stored)
+- **Encrypted credentials** — Email passwords AES-256-GCM encrypted at rest
+
+---
+
+## Screenshots
+
+> _Screenshots available in [`public/screenshots/`](public/screenshots/)_
 
 ---
 
@@ -71,7 +101,7 @@ The app will be available at `http://localhost:3500`.
 
 ### 5. Create your admin account
 
-With `REGISTRATION_ENABLED=true`, navigate to `http://localhost:3500/register` to create the first user. After setup, set `REGISTRATION_ENABLED=false` in your `.env` and restart the container.
+With `REGISTRATION_ENABLED=true`, navigate to `/register` to create the first user. After setup, set `REGISTRATION_ENABLED=false` and restart.
 
 ---
 
@@ -81,30 +111,29 @@ With `REGISTRATION_ENABLED=true`, navigate to `http://localhost:3500/register` t
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXTAUTH_URL` | Yes | Full public URL of the app (e.g. `https://mail.example.com`) |
-| `NEXTAUTH_SECRET` | Yes | Random secret for JWT signing — `openssl rand -base64 32` |
+| `NEXTAUTH_URL` | Yes | Full public URL (e.g. `https://mail.example.com`) |
+| `NEXTAUTH_SECRET` | Yes | Random secret for JWT — `openssl rand -base64 32` |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `ENCRYPTION_KEY` | Yes | 32-byte hex key for encrypting email passwords — `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | Yes | 32-byte hex key for email password encryption — `openssl rand -hex 32` |
 | `NEXT_PUBLIC_APP_URL` | Yes | Same as `NEXTAUTH_URL`, exposed to client |
 | `REGISTRATION_ENABLED` | No | `true` to allow new registrations (default: `true`) |
 
-### `.env.example`
-
-See [.env.example](.env.example) for the full template.
-
 ---
 
-## Multi-User Setup
+## Keyboard Shortcuts
 
-Synapmail supports multiple independent users on one instance:
+| Key | Action |
+|-----|--------|
+| `c` | New compose |
+| `r` | Reply |
+| `a` | Reply all |
+| `f` | Forward |
+| `Delete` / `#` | Delete current message |
+| `u` | Mark as unread |
+| `/` | Focus search |
+| `Escape` | Close compose |
 
-1. First user to register can be promoted to admin via direct DB update:
-   ```sql
-   UPDATE users SET role = 'admin' WHERE email = 'your@email.com';
-   ```
-2. Admin users can access `/admin/users` to manage other users.
-3. Set `REGISTRATION_ENABLED=false` once all users are created to prevent open registration.
-4. Each user independently manages their own IMAP/SMTP accounts under Settings > Email accounts.
+Shortcuts are inactive when an input field or the editor is focused.
 
 ---
 
@@ -112,25 +141,39 @@ Synapmail supports multiple independent users on one instance:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/accounts` | List email accounts for authenticated user |
-| `POST` | `/api/accounts` | Add a new email account |
-| `PATCH` | `/api/accounts/[id]` | Update an email account |
-| `DELETE` | `/api/accounts/[id]` | Remove an email account |
-| `GET` | `/api/messages?folder=&page=&filter=` | List messages (IMAP) |
-| `GET` | `/api/messages/[id]?account=&folder=` | Fetch message content |
-| `DELETE` | `/api/messages/[id]?account=&folder=` | Delete a message |
-| `PATCH` | `/api/messages/[id]/read` | Mark as read / unread |
-| `POST` | `/api/messages/[id]/move` | Move to another folder |
-| `POST` | `/api/messages/[id]/star` | Star / unstar |
+| `GET` | `/api/accounts` | List email accounts |
+| `POST` | `/api/accounts` | Add email account |
+| `PATCH` | `/api/accounts/[id]` | Update account |
+| `DELETE` | `/api/accounts/[id]` | Remove account |
+| `POST` | `/api/accounts/test` | Test IMAP + SMTP connection |
+| `GET` | `/api/messages?account=&folder=&page=&filter=` | List messages |
+| `GET` | `/api/messages/[id]?account=&folder=` | Get full message |
+| `PATCH` | `/api/messages/[id]?account=&folder=` | Mark read/unread or star |
+| `DELETE` | `/api/messages/[id]?account=&folder=` | Delete message |
+| `PATCH` | `/api/messages/bulk` | Bulk mark read/unread or move |
+| `DELETE` | `/api/messages/bulk` | Bulk delete |
+| `GET` | `/api/messages/[id]/attachment/[partId]?account=&folder=&inline=` | Download or inline-preview attachment |
 | `GET` | `/api/folders?account=` | List IMAP folders |
-| `POST` | `/api/send` | Send an email via SMTP |
-| `GET` | `/api/search?q=&account=` | Full-text search |
-| `GET` | `/api/messages/[id]/attachment/[partId]?account=&folder=&inline=` | Download or preview attachment |
-| `GET` | `/api/profile` | Get current user profile |
+| `POST` | `/api/send` | Send email (with optional forwarded attachments) |
+| `GET` | `/api/search?q=&account=` | Full-text IMAP search |
+| `GET` | `/api/profile` | Get current user |
 | `PATCH` | `/api/profile` | Update name or password |
-| `GET` | `/api/stream` | Server-Sent Events for new mail |
+| `GET` | `/api/stream` | Server-Sent Events — new mail |
 
 All endpoints require authentication. Responses follow `{ data?, error? }` shape.
+
+---
+
+## Multi-User Setup
+
+1. First user registers at `/register`.
+2. Promote to admin:
+   ```sql
+   UPDATE users SET role = 'admin' WHERE email = 'your@email.com';
+   ```
+3. Admin can manage users at `/admin/users`.
+4. Set `REGISTRATION_ENABLED=false` when done.
+5. Each user independently manages their IMAP/SMTP accounts under Settings → Email accounts.
 
 ---
 
@@ -154,7 +197,7 @@ npm run dev
 
 App runs at `http://localhost:3000`.
 
-### Useful commands
+### Commands
 
 ```bash
 npm run dev        # Start dev server
@@ -172,30 +215,28 @@ docker compose -f /mnt/stockage/docker/synapmail/docker-compose.yml down
 
 ---
 
-## Internationalization (i18n)
+## Internationalization
 
-Synapmail uses [next-intl](https://next-intl-docs.vercel.app/) for translations.
+Synapmail uses [next-intl](https://next-intl-docs.vercel.app/).
 
 | Language | Code | File |
 |----------|------|------|
 | English | `en` | `locales/en.json` |
 | French | `fr` | `locales/fr.json` |
 
-To add a new language:
-1. Create `locales/[code].json` with the same keys as `en.json`
+To add a language:
+1. Create `locales/[code].json` matching the structure of `en.json`
 2. Add the locale code to the `locales` array in `middleware.ts`
-3. Update `lib/i18n.ts` if needed
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-In short:
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/my-feature`
-3. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat: add X`, `fix: Y`, `docs: Z`
+3. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
 4. Open a Pull Request
 
 ---

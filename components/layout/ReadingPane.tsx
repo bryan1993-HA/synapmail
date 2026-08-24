@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Mail, Paperclip, Download, X, FileText, Image as ImageIcon } from 'lucide-react'
+import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Mail, Paperclip, Download, X, FileText, Image as ImageIcon, ReplyAll } from 'lucide-react'
 import useSWR from 'swr'
 import type { Message } from '@/types/email'
 import type { Attachment } from '@/types/email'
@@ -222,10 +222,12 @@ interface Props {
   folder: string
   onDelete?: () => void
   onReply?: (msg: Message) => void
+  onReplyAll?: (msg: Message) => void
   onForward?: (msg: Message) => void
+  onMessageLoaded?: (msg: Message) => void
 }
 
-export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onForward }: Props) {
+export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onReplyAll, onForward, onMessageLoaded }: Props) {
   const t = useTranslations('mail')
   const [isStarred, setIsStarred] = useState<boolean | null>(null)
 
@@ -238,6 +240,7 @@ export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onForwa
   useEffect(() => {
     if (message) {
       setIsStarred(message.isStarred)
+      onMessageLoaded?.(message)
       if (!message.isRead && accountId) {
         fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
           method: 'PATCH',
@@ -311,6 +314,16 @@ export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onForwa
             <div>
               <div className="text-sm font-medium text-foreground">{message.from.name || message.from.address}</div>
               <div className="text-xs text-muted-foreground">{message.from.address}</div>
+              {message.to?.length > 0 && (
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  À : {message.to.map(a => a.name || a.address).join(', ')}
+                </div>
+              )}
+              {message.cc && message.cc.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  Cc : {message.cc.map(a => a.name || a.address).join(', ')}
+                </div>
+              )}
             </div>
           </div>
           <div className="text-xs text-muted-foreground shrink-0">
@@ -323,6 +336,9 @@ export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onForwa
       <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border shrink-0">
         <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => onReply?.(message)}>
           <Reply className="w-3.5 h-3.5" /> {t('reply')}
+        </Button>
+        <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => onReplyAll?.(message)}>
+          <ReplyAll className="w-3.5 h-3.5" /> {t('replyAll')}
         </Button>
         <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => onForward?.(message)}>
           <Forward className="w-3.5 h-3.5" /> {t('forward')}

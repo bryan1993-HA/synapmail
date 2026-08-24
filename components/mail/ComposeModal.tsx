@@ -11,27 +11,36 @@ import {
   X, Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Link as LinkIcon, Undo, Redo,
-  Minus,
+  Minus, Paperclip,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
 import type { Signature } from '@/types/account'
+import type { Attachment } from '@/types/email'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+interface ForwardedAtt extends Attachment {
+  uid: string
+  accountId: string
+  folder: string
+}
+
 interface ComposeModalProps {
-  mode: 'compose' | 'reply' | 'forward'
+  mode: 'compose' | 'reply' | 'replyAll' | 'forward'
   replyTo?: {
     uid: string
     from: { name: string; address: string }
-    to: { address: string }[]
+    to: { address: string; name?: string }[]
+    cc?: { address: string; name?: string }[]
     subject: string
     bodyHtml?: string
     bodyPlain?: string
     date: string
     accountId: string
+    attachments?: ForwardedAtt[]
   }
   accountEmail: string
   accountId: string
@@ -73,13 +82,25 @@ function Separator() {
 
 export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, onSent }: ComposeModalProps) {
   const [to, setTo] = useState(() => {
-    if (mode === 'reply' && replyTo) return replyTo.from.address
+    if ((mode === 'reply' || mode === 'replyAll') && replyTo) return replyTo.from.address
     return ''
   })
-  const [cc, setCc] = useState('')
-  const [showCc, setShowCc] = useState(false)
+  const [cc, setCc] = useState(() => {
+    if (mode === 'replyAll' && replyTo) {
+      // All original recipients (To + CC) minus our own email
+      const allRecipients = [
+        ...(replyTo.to ?? []),
+        ...(replyTo.cc ?? []),
+      ].map(a => a.address).filter(addr => addr.toLowerCase() !== accountEmail.toLowerCase())
+      return allRecipients.join(', ')
+    }
+    return ''
+  })
+  const [bcc, setBcc] = useState('')
+  const [showCc, setShowCc] = useState(mode === 'replyAll')
+  const [showBcc, setShowBcc] = useState(false)
   const [subject, setSubject] = useState(() => {
-    if (mode === 'reply' && replyTo) return `Re: ${replyTo.subject.replace(/^(Re|Fwd):\s*/i, '')}`
+    if ((mode === 'reply' || mode === 'replyAll') && replyTo) return `Re: ${replyTo.subject.replace(/^(Re|Fwd):\s*/i, '')}`
     if (mode === 'forward' && replyTo) return `Fwd: ${replyTo.subject.replace(/^(Re|Fwd):\s*/i, '')}`
     return ''
   })
@@ -87,8 +108,41 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
   const [error, setError] = useState<string | null>(null)
   const [selectedSigId, setSelectedSigId] = useState<string | null>(null)
   const [sigApplied, setSigApplied] = useState(false)
+  const [draftRestored, setDraftRestored] = useState(false)
+  const [pendingDraftContent, setPendingDraftContent] = useState<string | null>(null)
+
+  // Draft auto-save key — only for compose mode
+  const DRAFT_KEY = mode === 'compose' ? `synapmail:draft:${accountId}` : null
+
+  // Forwarded attachments (for forward mode) — user can remove them
+  const [forwardedAtts, setForwardedAtts] = useState<ForwardedAtt[]>(() => {
+    if (mode === 'forward' && replyTo?.attachments?.length) {
+      return replyTo.attachments
+    }
+    return []
+  })
 
   const { data: sigData } = useSWR<{ data: Signature[] }>('/api/signatures', fetcher)
+
+  // Restore draft on mount (compose mode only)
+  useEffect(() => {
+    if (!DRAFT_KEY) return
+    const saved = localStorage.getItem(DRAFT_KEY)
+    if (!saved) return
+    try {
+      const draft = JSON.parse(saved) as { to: string; cc: string; bcc: string; subject: string; content: string }
+      if (draft.to || draft.subject || draft.content) {
+        setTo(draft.to ?? '')
+        setCc(draft.cc ?? '')
+        setBcc(draft.bcc ?? '')
+        setSubject(draft.subject ?? '')
+        if (draft.cc) setShowCc(true)
+        if (draft.bcc) setShowBcc(true)
+        setPendingDraftContent(draft.content)
+        setDraftRestored(true)
+      }
+    } catch { /* ignore */ }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const quotedHtml = useCallback(() => {
     if (!replyTo || mode === 'compose') return ''
@@ -127,22 +181,42 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
     const defaultSig = signatures.find(s => s.isDefault) ?? signatures[0]
     if (defaultSig) {
       setSelectedSigId(defaultSig.id)
-      editor.commands.setContent(`<p></p><p>-- </p>${defaultSig.contentHtml}`)
+      // If draft content restored, prepend it before signature
+      const bodyPart = pendingDraftContent ?? '<p></p>'
+      editor.commands.setContent(`${bodyPart}<p>-- </p>${defaultSig.contentHtml}`)
+      setPendingDraftContent(null)
       setSigApplied(true)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, sigApplied, signatures.length])
 
-  // Regex robust: Tiptap may output <p>-- </p>, <p>--</p>, <p>-- </p> etc.
+  // Apply pending draft content once editor ready (no signatures case)
+  useEffect(() => {
+    if (!editor || !pendingDraftContent || sigApplied) return
+    if (signatures.length > 0) return // handled above
+    editor.commands.setContent(pendingDraftContent)
+    setPendingDraftContent(null)
+  }, [editor, pendingDraftContent, sigApplied, signatures.length])
+
+  // Auto-save draft every 3s after last change (compose mode only)
+  useEffect(() => {
+    if (!DRAFT_KEY || !editor) return
+    const timer = setTimeout(() => {
+      const content = editor.getHTML()
+      const isEmpty = !to && !subject && (content === '<p></p>' || content === '')
+      if (isEmpty) return
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ to, cc, bcc, subject, content }))
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [to, cc, bcc, subject, editor]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const SIG_SEP_RE = /<p[^>]*>--\s*<\/p>/
 
-  // Swap signature when dropdown changes
   const handleSigChange = (sigId: string) => {
     if (!editor) return
     setSelectedSigId(sigId || null)
     const sig = sigId ? signatures.find(s => s.id === sigId) : null
     const currentHtml = editor.getHTML()
-    // Strip everything from the separator onwards
     const match = SIG_SEP_RE.exec(currentHtml)
     const bodyHtml = match ? currentHtml.slice(0, match.index) : currentHtml
     const newContent = sig
@@ -158,6 +232,10 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
     editor.chain().focus().setLink({ href: url }).run()
   }
 
+  const removeForwardedAtt = (id: string) => {
+    setForwardedAtts(prev => prev.filter(a => a.id !== id))
+  }
+
   const handleSend = async () => {
     if (!to.trim() || !subject.trim()) {
       setError('Destinataire et sujet requis')
@@ -167,22 +245,37 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
     setError(null)
     try {
       const bodyHtml = (editor?.getHTML() ?? '') + quotedHtml()
+      const payload: Record<string, unknown> = {
+        accountId,
+        to: to.split(',').map(s => s.trim()).filter(Boolean),
+        cc: cc ? cc.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+        bcc: bcc ? bcc.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+        subject,
+        html: bodyHtml,
+        inReplyTo: (mode === 'reply' || mode === 'replyAll') && replyTo ? replyTo.uid : undefined,
+      }
+
+      if (mode === 'forward' && forwardedAtts.length) {
+        payload.forwardedAttachments = forwardedAtts.map(a => ({
+          uid: a.uid,
+          accountId: a.accountId,
+          folder: a.folder,
+          partIdx: parseInt(a.id),
+          filename: a.filename,
+          contentType: a.contentType,
+        }))
+      }
+
       const res = await fetch('/api/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId,
-          to: to.split(',').map(s => s.trim()).filter(Boolean),
-          cc: cc ? cc.split(',').map(s => s.trim()).filter(Boolean) : undefined,
-          subject,
-          html: bodyHtml,
-          inReplyTo: mode === 'reply' && replyTo ? replyTo.uid : undefined,
-        }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error ?? 'Erreur lors de l\'envoi')
       }
+      if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY)
       onSent()
       onClose()
     } catch (err) {
@@ -192,7 +285,12 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
     }
   }
 
-  const title = mode === 'reply' ? 'Répondre' : mode === 'forward' ? 'Transférer' : 'Nouveau message'
+  const modeTitle: Record<typeof mode, string> = {
+    compose: 'Nouveau message',
+    reply: 'Répondre',
+    replyAll: 'Répondre à tous',
+    forward: 'Transférer',
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end p-4 pointer-events-none">
@@ -200,9 +298,15 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 bg-muted/30 rounded-t-xl">
-          <span className="text-sm font-semibold text-foreground">{title}</span>
+          <span className="text-sm font-semibold text-foreground">{modeTitle[mode]}</span>
+          {draftRestored && (
+            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
+              Brouillon restauré
+              <button onClick={() => { setDraftRestored(false); if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY) }} className="hover:text-foreground">×</button>
+            </span>
+          )}
           <button
-            onClick={onClose}
+            onClick={() => { if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY); onClose() }}
             className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
             <X className="w-4 h-4" />
@@ -211,6 +315,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
 
         {/* Fields */}
         <div className="px-4 pt-3 space-y-1.5 shrink-0">
+          {/* To */}
           <div className="flex items-center gap-2 border-b border-border pb-1.5">
             <span className="text-xs text-muted-foreground w-10 shrink-0">À</span>
             <Input
@@ -219,16 +324,27 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
               placeholder="destinataire@exemple.com"
               className="h-7 text-sm border-0 rounded-none px-0 focus-visible:ring-0 shadow-none"
             />
-            {!showCc && (
-              <button
-                onClick={() => setShowCc(true)}
-                className="text-xs text-muted-foreground hover:text-foreground shrink-0 px-1"
-              >
-                Cc
-              </button>
-            )}
+            <div className="flex items-center gap-1 shrink-0">
+              {!showCc && (
+                <button
+                  onClick={() => setShowCc(true)}
+                  className="text-xs text-muted-foreground hover:text-foreground px-1"
+                >
+                  Cc
+                </button>
+              )}
+              {!showBcc && (
+                <button
+                  onClick={() => setShowBcc(true)}
+                  className="text-xs text-muted-foreground hover:text-foreground px-1"
+                >
+                  Cci
+                </button>
+              )}
+            </div>
           </div>
 
+          {/* CC */}
           {showCc && (
             <div className="flex items-center gap-2 border-b border-border pb-1.5">
               <span className="text-xs text-muted-foreground w-10 shrink-0">Cc</span>
@@ -237,10 +353,32 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
                 onChange={e => setCc(e.target.value)}
                 placeholder="cc@exemple.com"
                 className="h-7 text-sm border-0 rounded-none px-0 focus-visible:ring-0 shadow-none"
+                autoFocus={mode !== 'replyAll'}
               />
+              <button onClick={() => setShowCc(false)} className="shrink-0 text-muted-foreground hover:text-foreground">
+                <X className="w-3 h-3" />
+              </button>
             </div>
           )}
 
+          {/* BCC */}
+          {showBcc && (
+            <div className="flex items-center gap-2 border-b border-border pb-1.5">
+              <span className="text-xs text-muted-foreground w-10 shrink-0">Cci</span>
+              <Input
+                value={bcc}
+                onChange={e => setBcc(e.target.value)}
+                placeholder="bcc@exemple.com"
+                className="h-7 text-sm border-0 rounded-none px-0 focus-visible:ring-0 shadow-none"
+                autoFocus
+              />
+              <button onClick={() => setShowBcc(false)} className="shrink-0 text-muted-foreground hover:text-foreground">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {/* Subject */}
           <div className="flex items-center gap-2 border-b border-border pb-1.5">
             <span className="text-xs text-muted-foreground w-10 shrink-0">Objet</span>
             <Input
@@ -250,6 +388,25 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
               className="h-7 text-sm border-0 rounded-none px-0 focus-visible:ring-0 shadow-none"
             />
           </div>
+
+          {/* Forwarded attachments */}
+          {mode === 'forward' && forwardedAtts.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pb-1.5 border-b border-border">
+              {forwardedAtts.map(att => (
+                <div key={att.id} className="flex items-center gap-1.5 bg-muted/50 rounded-md px-2 py-1 text-xs text-muted-foreground">
+                  <Paperclip className="w-3 h-3 shrink-0" />
+                  <span className="max-w-[140px] truncate text-foreground">{att.filename}</span>
+                  <button
+                    onClick={() => removeForwardedAtt(att.id)}
+                    className="hover:text-destructive transition-colors"
+                    title="Retirer cette pièce jointe"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Toolbar */}
@@ -312,7 +469,6 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
 
             <Separator />
 
-            {/* Headings */}
             {([1, 2, 3] as const).map(level => (
               <ToolbarBtn
                 key={level}
@@ -337,7 +493,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
         {/* Editor */}
         <div className="flex-1 overflow-y-auto min-h-0">
           <EditorContent editor={editor} />
-          {(mode === 'reply' || mode === 'forward') && replyTo && (
+          {(mode === 'reply' || mode === 'replyAll' || mode === 'forward') && replyTo && (
             <div
               className="px-4 pb-4"
               dangerouslySetInnerHTML={{ __html: quotedHtml() }}
@@ -351,7 +507,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
           <Button size="sm" onClick={handleSend} disabled={sending} className="h-8 px-5">
             {sending ? 'Envoi…' : 'Envoyer'}
           </Button>
-          <Button size="sm" variant="ghost" onClick={onClose} className="h-8">
+          <Button size="sm" variant="ghost" onClick={() => { if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY); onClose() }} className="h-8">
             Annuler
           </Button>
           <div className="flex-1" />

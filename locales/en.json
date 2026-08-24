@@ -73,6 +73,9 @@
     "from": "From"
   },
   "settings": {
+    "accountsDesc": "Manage your IMAP/SMTP accounts",
+    "profileDesc": "Name, email, password",
+    "signaturesDesc": "Manage email signatures",
     "title": "Settings",
     "accounts": {
       "title": "Email accounts",

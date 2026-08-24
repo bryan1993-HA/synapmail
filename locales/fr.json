@@ -74,6 +74,9 @@
   },
   "settings": {
     "title": "Paramètres",
+    "accountsDesc": "Gérer vos comptes IMAP/SMTP",
+    "profileDesc": "Nom, email, mot de passe",
+    "signaturesDesc": "Gérer vos signatures email",
     "accounts": {
       "title": "Comptes email",
       "add": "Ajouter un compte",

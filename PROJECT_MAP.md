@@ -4,120 +4,140 @@ Quick navigation reference for every file and feature.
 
 ---
 
-## 🗺️ Find It Fast
+## Find It Fast
 
 | I need to... | Go to |
 |---|---|
 | Change login page | `app/(auth)/login/page.tsx` |
 | Change email list | `components/layout/MessageList.tsx` |
+| Change bulk actions / checkboxes / drag | `components/layout/MessageList.tsx` |
+| Change right-click context menu | `components/ui/MessageContextMenu.tsx` |
 | Change email viewer | `components/layout/ReadingPane.tsx` |
 | Change attachment preview | `components/layout/ReadingPane.tsx` → `AttachmentSection` |
-| Change compose | `components/mail/ComposeModal.tsx` |
+| Change compose (reply/replyAll/forward/BCC) | `components/mail/ComposeModal.tsx` |
+| Change draft auto-save | `components/mail/ComposeModal.tsx` → `DRAFT_KEY` / localStorage |
 | Change signature logic | `components/mail/ComposeModal.tsx` → `handleSigChange` |
-| Change sidebar/folders | `components/layout/Sidebar.tsx` |
-| Change rich editor | `components/compose/RichEditor.tsx` |
+| Change sidebar / drag-drop targets | `components/layout/Sidebar.tsx` |
+| Change keyboard shortcuts | `hooks/useKeyboardShortcuts.ts` |
+| Change desktop notifications | `hooks/useEmailNotifications.ts` |
 | Add/edit translations | `locales/en.json` + `locales/fr.json` |
 | Change auth logic | `lib/auth.ts` |
 | Change DB queries | `lib/db.ts` |
-| Change IMAP logic / attachment detection | `lib/imap.ts` → `detectAttachments` |
+| Change IMAP logic | `lib/imap.ts` |
+| Change SMTP / forwarded attachments | `lib/smtp.ts` + `app/api/send/route.ts` |
 | Change profile (name/password) | `app/(app)/settings/profile/page.tsx` + `app/api/profile/route.ts` |
-| Change SMTP logic | `lib/smtp.ts` |
+| Add email account (wizard) | `app/(app)/settings/accounts/AccountWizard.tsx` |
+| Change account list / edit form | `app/(app)/settings/accounts/AccountsClient.tsx` |
+| Add provider to wizard | `AccountWizard.tsx` → `PROVIDERS` constant |
+| Bulk IMAP operations | `lib/imap.ts` → `markReadBulk`, `deleteMessagesBulk`, `moveMessagesBulk` |
+| Bulk API | `app/api/messages/bulk/route.ts` |
 | Add API route | `app/api/` |
 | Change middleware | `middleware.ts` |
 | Change global styles | `app/globals.css` |
 | Change Docker config | `/mnt/stockage/docker/synapmail/` |
-| Change env variables | `/mnt/stockage/docker/synapmail/.env` |
 
 ---
 
-## 📁 Directory Tree
+## Directory Tree
 
 ```
 /mnt/stockage/Web/synapmail/
 │
-├── 📄 CLAUDE.md              ← AI context (read first)
-├── 📄 PROJECT_MAP.md         ← This file
-├── 📄 README.md              ← GitHub public readme
-├── 📄 CHANGELOG.md           ← Release history
-├── 📄 CONTRIBUTING.md        ← How to contribute
-├── 📄 LICENSE                ← MIT
-├── 📄 .env.example           ← Env template (no secrets)
-├── 📄 .gitignore
-├── 📄 middleware.ts          ← Auth guard + i18n
-├── 📄 next.config.mjs        ← Next.js + withNextIntl
-├── 📄 tailwind.config.ts
-├── 📄 tsconfig.json
+├── CLAUDE.md              ← AI context (read first)
+├── PROJECT_MAP.md         ← This file
+├── README.md              ← GitHub public readme
+├── CHANGELOG.md           ← Release history
+├── CONTRIBUTING.md        ← How to contribute
+├── LICENSE                ← MIT
+├── .env.example           ← Env template (no secrets)
+├── middleware.ts          ← Auth guard + i18n routing
+├── next.config.mjs        ← Next.js + withNextIntl
+├── tailwind.config.ts
+├── tsconfig.json
 │
-├── 📁 app/
-│   ├── layout.tsx            ← Root: ThemeProvider + IntlProvider
-│   ├── globals.css           ← CSS variables (dark/light)
-│   ├── (auth)/               ← Public routes (no auth)
+├── app/
+│   ├── layout.tsx                    ← Root: ThemeProvider + IntlProvider
+│   ├── globals.css                   ← CSS variables (dark/light)
+│   ├── (auth)/                       ← Public routes
 │   │   ├── login/page.tsx
 │   │   └── register/page.tsx
-│   ├── (app)/                ← Protected routes
-│   │   ├── layout.tsx        ← AppShell (three-column)
-│   │   ├── mail/page.tsx     ← Main inbox view
-│   │   ├── settings/         ← User settings
-│   │   └── admin/            ← Admin panel
-│   └── api/                  ← REST API
-│       ├── auth/             ← Auth.js
-│       ├── accounts/         ← Email accounts CRUD
-│       ├── messages/         ← IMAP read/delete
-│       ├── folders/          ← Folder list
-│       ├── send/             ← SMTP send
-│       ├── search/           ← Full-text search
-│       ├── attachments/      ← File download
-│       └── stream/           ← SSE new mail notify
+│   ├── (app)/                        ← Protected routes
+│   │   ├── layout.tsx                ← AppShell
+│   │   ├── mail/
+│   │   │   ├── page.tsx              ← Server component (auth guard)
+│   │   │   └── MailClient.tsx        ← Client: orchestrates all mail UI + keyboard shortcuts
+│   │   ├── settings/
+│   │   │   ├── page.tsx              ← Settings index (server component)
+│   │   │   ├── accounts/
+│   │   │   │   ├── page.tsx          ← Server component (passes searchParams as props)
+│   │   │   │   ├── AccountsClient.tsx
+│   │   │   │   ├── AccountWizard.tsx ← Multi-step wizard (provider grid → credentials → advanced)
+│   │   │   │   └── ErrorBoundary.tsx
+│   │   │   ├── profile/page.tsx
+│   │   │   └── signatures/page.tsx
+│   │   └── admin/users/page.tsx
+│   └── api/
+│       ├── auth/[...nextauth]/route.ts
+│       ├── accounts/
+│       │   ├── route.ts              ← GET list / POST create
+│       │   ├── [id]/route.ts         ← PATCH update / DELETE remove
+│       │   └── test/route.ts         ← POST test IMAP+SMTP
+│       ├── messages/
+│       │   ├── route.ts              ← GET list (paginated, filtered)
+│       │   ├── [id]/
+│       │   │   ├── route.ts          ← GET / PATCH (read, star) / DELETE
+│       │   │   └── attachment/[partId]/route.ts  ← GET download or inline preview
+│       │   ├── bulk/route.ts         ← PATCH (mark read/move) + DELETE (bulk)
+│       │   └── search/route.ts       ← GET full-text search (via IMAP)
+│       ├── folders/route.ts          ← GET IMAP folder list
+│       ├── send/route.ts             ← POST SMTP send (+ forwarded attachments)
+│       ├── profile/route.ts          ← GET + PATCH user profile
+│       └── stream/route.ts           ← GET Server-Sent Events
 │
-├── 📁 components/
-│   ├── layout/               ← App shell components
-│   │   ├── AppShell.tsx      ← Three-column container
-│   │   ├── Sidebar.tsx       ← Accounts + folders
-│   │   ├── MessageList.tsx   ← Email list (center)
-│   │   └── ReadingPane.tsx   ← Email viewer (right)
-│   ├── compose/              ← Email composition
-│   │   ├── ComposeModal.tsx
-│   │   ├── RichEditor.tsx    ← Tiptap
-│   │   └── AttachmentList.tsx
-│   ├── mail/                 ← Email-specific components
-│   │   ├── MessageRow.tsx
-│   │   ├── MessageViewer.tsx
-│   │   ├── ThreadView.tsx
-│   │   └── FolderTree.tsx
-│   ├── ui/                   ← shadcn/ui components
-│   └── providers.tsx         ← Context providers
+├── components/
+│   ├── layout/
+│   │   ├── AppShell.tsx             ← Three-column shell + mobile drawer
+│   │   ├── Sidebar.tsx              ← Accounts + folders + drag-drop targets
+│   │   ├── MessageList.tsx          ← Email list: threads, checkboxes, bulk bar, drag source, context menu
+│   │   ├── ReadingPane.tsx          ← Email viewer: body, attachments, reply/replyAll/forward
+│   │   └── ThreadPane.tsx           ← Multi-message thread view
+│   ├── mail/
+│   │   └── ComposeModal.tsx         ← Compose / reply / replyAll / forward + BCC + draft auto-save
+│   └── ui/
+│       ├── MessageContextMenu.tsx   ← Right-click context menu (mark, star, move, delete)
+│       ├── ThemeToggle.tsx
+│       └── [shadcn components]
 │
-├── 📁 lib/
-│   ├── auth.ts               ← Auth.js config
-│   ├── db.ts                 ← PostgreSQL client
-│   ├── imap.ts               ← imapflow wrapper
-│   ├── smtp.ts               ← nodemailer wrapper
-│   ├── accounts.ts           ← Account helpers + encryption
-│   ├── encrypt.ts            ← AES-256-GCM encrypt/decrypt
-│   └── utils.ts              ← cn() + misc
+├── hooks/
+│   ├── useEmailNotifications.ts     ← Browser notifications with click-to-open
+│   └── useKeyboardShortcuts.ts      ← Global keyboard shortcuts (c/r/a/f/Delete/u//)
 │
-├── 📁 types/
-│   ├── email.ts              ← Email, Message, Folder, Attachment types
-│   ├── account.ts            ← EmailAccount, User types
-│   └── api.ts                ← API response types
+├── lib/
+│   ├── auth.ts                      ← Auth.js config (credentials + XOAUTH2)
+│   ├── db.ts                        ← PostgreSQL pool
+│   ├── imap.ts                      ← imapflow wrapper (list, get, delete, move, flags, bulk, attachments)
+│   ├── smtp.ts                      ← nodemailer wrapper (send + verify)
+│   ├── encrypt.ts                   ← AES-256-GCM encrypt/decrypt
+│   ├── msOAuth.ts                   ← Microsoft OAuth2 token refresh
+│   └── utils.ts                     ← cn() + helpers
 │
-├── 📁 locales/
-│   ├── en.json               ← English
-│   └── fr.json               ← French
+├── types/
+│   ├── email.ts                     ← Message, Folder, Attachment, EmailAddress, Thread
+│   ├── account.ts                   ← EmailAccount, Signature, User
+│   └── api.ts                       ← API response types
 │
-├── 📁 public/
-│   ├── logo.svg
-│   └── screenshots/          ← README screenshots
+├── locales/
+│   ├── en.json
+│   └── fr.json
 │
-└── 📁 docker/ (symlink info)
-    → /mnt/stockage/docker/synapmail/
-       ├── docker-compose.yml
-       └── .env
+└── docker/ → /mnt/stockage/docker/synapmail/
+    ├── docker-compose.yml
+    └── .env
 ```
 
 ---
 
-## 🔌 API Endpoints
+## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -125,49 +145,53 @@ Quick navigation reference for every file and feature.
 | POST | `/api/accounts` | Add email account |
 | PATCH | `/api/accounts/[id]` | Update account |
 | DELETE | `/api/accounts/[id]` | Remove account |
-| GET | `/api/messages?account=&folder=&page=&filter=` | List messages |
-| GET | `/api/messages/[id]?account=&folder=` | Get message content |
+| POST | `/api/accounts/test` | Test IMAP + SMTP connection |
+| GET | `/api/messages?account=&folder=&page=&filter=` | List messages (paginated) |
+| GET | `/api/messages/[id]?account=&folder=` | Get full message + attachments |
+| PATCH | `/api/messages/[id]?account=&folder=` | Mark read/unread or star |
 | DELETE | `/api/messages/[id]?account=&folder=` | Delete message |
-| PATCH | `/api/messages/[id]/read` | Mark read/unread |
-| POST | `/api/messages/[id]/move` | Move to folder |
-| POST | `/api/messages/[id]/star` | Star/unstar |
+| **PATCH** | **`/api/messages/bulk`** | **Bulk mark read/unread or move to folder** |
+| **DELETE** | **`/api/messages/bulk`** | **Bulk delete** |
+| GET | `/api/messages/[id]/attachment/[partId]?account=&folder=&inline=` | Download or inline-preview |
 | GET | `/api/folders?account=` | List IMAP folders |
-| POST | `/api/send` | Send email |
-| GET | `/api/search?q=&account=` | Search messages |
-| GET | `/api/messages/[id]/attachment/[partId]?account=&folder=&inline=` | Download or preview attachment |
-| GET | `/api/profile` | Get current user profile |
+| POST | `/api/send` | Send email (supports `forwardedAttachments`) |
+| GET | `/api/search?q=&account=` | Full-text IMAP search |
+| GET | `/api/profile` | Get current user |
 | PATCH | `/api/profile` | Update name or password |
-| GET | `/api/stream` | SSE new mail events |
+| GET | `/api/stream` | Server-Sent Events — new mail notify |
 
 ---
 
-## 🗄️ Database Tables
+## Database Tables
 
 | Table | Purpose |
 |-------|---------|
-| `users` | App users (admin/user roles) |
+| `users` | App users (admin / user roles) |
 | `email_accounts` | IMAP/SMTP accounts per user |
 | `signatures` | Email signatures per account |
-| `messages_cache` | Cached message metadata |
-| `user_settings` | Per-user preferences |
+| `messages_cache` | Cached message metadata (reserved for future offline mode) |
+| `user_settings` | Per-user preferences (theme, language, etc.) |
 
 ---
 
-## 🌍 i18n Keys Structure
+## Keyboard Shortcuts
 
-```json
-{
-  "auth": { "login": {}, "register": {} },
-  "mail": { "inbox": {}, "compose": {}, "folders": {} },
-  "settings": { "accounts": {}, "profile": {}, "signatures": {} },
-  "admin": { "users": {} },
-  "common": { "actions": {}, "errors": {} }
-}
-```
+| Key | Action | Condition |
+|-----|--------|-----------|
+| `c` | New compose | Always |
+| `r` | Reply | Message open |
+| `a` | Reply all | Message open |
+| `f` | Forward | Message open |
+| `Delete` / `#` | Delete | Message open |
+| `u` | Mark as unread | Message open |
+| `/` | Focus search | Always |
+| `Escape` | Close compose | Compose open |
+
+Disabled when an `<input>`, `<textarea>`, or `contenteditable` is focused.
 
 ---
 
-## 🐳 Docker
+## Docker
 
 ```bash
 # Build & start
@@ -180,4 +204,4 @@ docker compose -f /mnt/stockage/docker/synapmail/docker-compose.yml logs -f
 docker compose -f /mnt/stockage/docker/synapmail/docker-compose.yml down
 ```
 
-Container: `synapmail` | Port: `3500→3000` | Network: `reverse-proxy_ngix_net`
+Container: `synapmail` | Port: `3500→3000`
