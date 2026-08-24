@@ -1,34 +1,53 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Mail } from 'lucide-react'
+import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Mail, Paperclip } from 'lucide-react'
 import useSWR from 'swr'
 import type { Message } from '@/types/email'
 import { Button } from '@/components/ui/button'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
+import { cn } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+const formatBytes = (bytes: number) =>
+  bytes < 1024 ? bytes + 'B'
+    : bytes < 1048576 ? (bytes / 1024).toFixed(1) + 'Ko'
+    : (bytes / 1048576).toFixed(1) + 'Mo'
 
 function EmailBody({ message }: { message: Message }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     if (!message.bodyHtml || !iframeRef.current) return
-    const doc = iframeRef.current.contentDocument
+    const iframe = iframeRef.current
+    const doc = iframe.contentDocument
     if (!doc) return
     doc.open()
     doc.write(
-      `<html><head><style>body{font-family:sans-serif;font-size:14px;line-height:1.6;color:#333;padding:0 16px;margin:0}</style></head><body>${message.bodyHtml}</body></html>`
+      `<html><head><style>
+        * { box-sizing: border-box; }
+        body { font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333; padding: 16px; margin: 0; }
+        img { max-width: 100%; height: auto; }
+      </style></head><body>${message.bodyHtml}</body></html>`
     )
     doc.close()
+
+    const resize = () => {
+      if (iframe.contentDocument?.body) {
+        iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'
+      }
+    }
+    iframe.onload = resize
+    setTimeout(resize, 100)
   }, [message.bodyHtml])
 
   if (message.bodyHtml) {
     return (
       <iframe
         ref={iframeRef}
-        className="w-full border-0 flex-1"
-        style={{ minHeight: 400 }}
+        className="w-full border-0 block"
+        style={{ minHeight: '100%' }}
         sandbox="allow-same-origin allow-popups"
         title="Email content"
       />
@@ -45,17 +64,53 @@ interface Props {
   uid: string | null
   accountId: string | null
   folder: string
+  onDelete?: () => void
+  onReply?: (msg: Message) => void
+  onForward?: (msg: Message) => void
 }
 
-export function ReadingPane({ uid, accountId, folder }: Props) {
+export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onForward }: Props) {
   const t = useTranslations('mail')
+  const [isStarred, setIsStarred] = useState<boolean | null>(null)
 
-  const { data: message, isLoading } = useSWR<Message>(
-    uid && accountId
-      ? `/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`
-      : null,
-    fetcher
-  )
+  const swrKey = uid && accountId
+    ? `/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`
+    : null
+
+  const { data: message, isLoading, mutate } = useSWR<Message>(swrKey, fetcher)
+
+  useEffect(() => {
+    if (message) {
+      setIsStarred(message.isStarred)
+      if (!message.isRead && accountId) {
+        fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isRead: true }),
+        })
+      }
+    }
+  }, [message?.uid]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDelete = async () => {
+    if (!uid || !accountId) return
+    await fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
+      method: 'DELETE',
+    })
+    onDelete?.()
+  }
+
+  const handleStar = async () => {
+    if (!uid || !accountId || !message) return
+    const newStarred = !isStarred
+    setIsStarred(newStarred)
+    await fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isStarred: newStarred }),
+    })
+    mutate({ ...message, isStarred: newStarred }, false)
+  }
 
   if (!uid) {
     return (
@@ -83,6 +138,8 @@ export function ReadingPane({ uid, accountId, folder }: Props) {
 
   if (!message) return null
 
+  const starred = isStarred ?? message.isStarred
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -108,20 +165,25 @@ export function ReadingPane({ uid, accountId, folder }: Props) {
 
       {/* Actions */}
       <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border shrink-0">
-        <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs">
+        <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => onReply?.(message)}>
           <Reply className="w-3.5 h-3.5" /> {t('reply')}
         </Button>
-        <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs">
+        <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => onForward?.(message)}>
           <Forward className="w-3.5 h-3.5" /> {t('forward')}
         </Button>
         <div className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-          <Star className="w-3.5 h-3.5" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn('h-8 w-8 p-0', starred && 'text-yellow-500 hover:text-yellow-600')}
+          onClick={handleStar}
+        >
+          <Star className={cn('w-3.5 h-3.5', starred && 'fill-current')} />
         </Button>
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
           <Archive className="w-3.5 h-3.5" />
         </Button>
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive">
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive" onClick={handleDelete}>
           <Trash2 className="w-3.5 h-3.5" />
         </Button>
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -130,8 +192,31 @@ export function ReadingPane({ uid, accountId, folder }: Props) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         <EmailBody message={message} />
+
+        {/* Attachments */}
+        {(message.attachments?.length ?? 0) > 0 && (
+          <div className="px-6 py-4 border-t border-border">
+            <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+              Pièces jointes ({message.attachments!.length})
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {message.attachments!.map(att => (
+                <a
+                  key={att.id}
+                  href={`/api/messages/${uid}/attachment/${att.id}?account=${accountId}&folder=${encodeURIComponent(folder)}`}
+                  download={att.filename}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 transition-colors text-xs group"
+                >
+                  <Paperclip className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="max-w-[160px] truncate text-foreground">{att.filename}</span>
+                  <span className="text-muted-foreground shrink-0">{formatBytes(att.size)}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

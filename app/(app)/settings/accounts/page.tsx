@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Wifi } from 'lucide-react'
 import type { EmailAccount } from '@/types/account'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json()).then(d => d.data)
@@ -39,17 +40,30 @@ export default function AccountsPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<AccountFormState>(defaultForm)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [testResult, setTestResult] = useState<{ imap: { ok: boolean; error: string }; smtp: { ok: boolean; error: string } } | null>(null)
+
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const err = searchParams.get('error')
+    const ok = searchParams.get('success')
+    if (err) setError(decodeURIComponent(err))
+    if (ok === 'microsoft') { setSuccess('Compte Microsoft connecté avec succès.'); mutate() }
+  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openNew = () => {
     setEditId(null)
     setForm(defaultForm)
     setShowForm(true)
     setError('')
+    setTestResult(null)
   }
 
   const openEdit = (account: EmailAccount) => {
     setEditId(account.id)
+    setTestResult(null)
     setForm({
       name: account.name, email: account.email,
       imapHost: account.imapHost, imapPort: String(account.imapPort), imapSecure: account.imapSecure,
@@ -65,6 +79,33 @@ export default function AccountsPage() {
     if (!confirm('Delete this account?')) return
     await fetch(`/api/accounts/${id}`, { method: 'DELETE' })
     mutate()
+  }
+
+  const handleTest = async () => {
+    if (!form.imapHost || !form.smtpHost || !form.username || !form.password) {
+      setError('Fill in all fields including password to test')
+      return
+    }
+    setTesting(true)
+    setTestResult(null)
+    setError('')
+    try {
+      const res = await fetch('/api/accounts/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imapHost: form.imapHost, imapPort: parseInt(form.imapPort), imapSecure: form.imapSecure,
+          smtpHost: form.smtpHost, smtpPort: parseInt(form.smtpPort), smtpSecure: form.smtpSecure,
+          username: form.username, password: form.password,
+        }),
+      })
+      const data = await res.json()
+      setTestResult(data)
+    } catch {
+      setError('Test failed')
+    } finally {
+      setTesting(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,10 +141,30 @@ export default function AccountsPage() {
     <div className="p-8 max-w-2xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{t('title')}</h1>
-        <Button onClick={openNew} size="sm" className="gap-1.5">
-          <Plus className="w-4 h-4" /> {t('add')}
-        </Button>
+        <div className="flex gap-2">
+          <a href="/api/oauth/microsoft">
+            <Button size="sm" variant="outline" className="gap-1.5">
+              <svg className="w-4 h-4" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+              </svg>
+              Microsoft / Outlook
+            </Button>
+          </a>
+          <Button onClick={openNew} size="sm" className="gap-1.5">
+            <Plus className="w-4 h-4" /> {t('add')}
+          </Button>
+        </div>
       </div>
+
+      {success && (
+        <div className="mb-4 p-3 rounded-lg bg-green-500/10 text-green-600 text-sm">{success}</div>
+      )}
+      {error && !showForm && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
+      )}
 
       {!accounts?.length && !showForm && (
         <div className="text-center py-12 text-muted-foreground">
@@ -173,8 +234,24 @@ export default function AccountsPage() {
             </div>
           </div>
 
+          {testResult && (
+            <div className="rounded-lg border border-border p-3 space-y-1.5 text-sm">
+              <div className={`flex items-center gap-2 ${testResult.imap.ok ? 'text-green-600' : 'text-destructive'}`}>
+                <span>{testResult.imap.ok ? '✓' : '✗'} IMAP</span>
+                {!testResult.imap.ok && <span className="text-xs opacity-75">{testResult.imap.error}</span>}
+              </div>
+              <div className={`flex items-center gap-2 ${testResult.smtp.ok ? 'text-green-600' : 'text-destructive'}`}>
+                <span>{testResult.smtp.ok ? '✓' : '✗'} SMTP</span>
+                {!testResult.smtp.ok && <span className="text-xs opacity-75">{testResult.smtp.error}</span>}
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <Button type="submit" disabled={saving}>{saving ? '...' : t('save')}</Button>
+            <Button type="button" variant="outline" onClick={handleTest} disabled={testing} className="gap-1.5">
+              <Wifi className="w-4 h-4" />{testing ? '...' : 'Tester la connexion'}
+            </Button>
             <Button type="button" variant="outline" onClick={() => setShowForm(false)}>{t('cancel')}</Button>
           </div>
         </form>

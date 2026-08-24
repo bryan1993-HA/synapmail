@@ -1,20 +1,29 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
-import { listMessages } from '@/lib/imap'
+import { searchMessages } from '@/lib/imap'
 
 export const dynamic = 'force-dynamic'
+
+type AccountRow = {
+  id: string; imap_host: string; imap_port: number; imap_secure: boolean;
+  username: string; password_encrypted: string;
+  oauth_provider: string | null; oauth_access_token: string | null;
+  oauth_refresh_token: string | null; oauth_expires_at: number | null;
+}
 
 export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
+  const q = searchParams.get('q')?.trim()
   const folder = searchParams.get('folder') ?? 'INBOX'
-  const page = parseInt(searchParams.get('page') ?? '1')
-  const perPage = parseInt(searchParams.get('perPage') ?? '30')
-  const filter = (searchParams.get('filter') ?? 'all') as 'all' | 'unread' | 'starred'
   const accountParam = searchParams.get('account')
+
+  if (!q || q.length < 2) {
+    return NextResponse.json({ messages: [] })
+  }
 
   try {
     let sql: string
@@ -28,19 +37,13 @@ export async function GET(req: Request) {
       values = [session.user?.id]
     }
 
-    const accounts = await query<{
-      id: string; imap_host: string; imap_port: number; imap_secure: boolean;
-      username: string; password_encrypted: string;
-      oauth_provider: string | null; oauth_access_token: string | null;
-      oauth_refresh_token: string | null; oauth_expires_at: number | null;
-    }>(sql, values)
-
+    const accounts = await query<AccountRow>(sql, values)
     if (!accounts.length) {
-      return NextResponse.json({ messages: [], total: 0, error: 'No account configured' })
+      return NextResponse.json({ messages: [], error: 'No account configured' })
     }
 
     const account = accounts[0]
-    const result = await listMessages(
+    const messages = await searchMessages(
       {
         id: account.id,
         imapHost: account.imap_host,
@@ -54,15 +57,11 @@ export async function GET(req: Request) {
         oauthExpiresAt: account.oauth_expires_at,
       },
       folder,
-      page,
-      perPage,
-      filter
+      q
     )
 
-    result.messages = result.messages.map(m => ({ ...m, accountId: account.id }))
-
-    return NextResponse.json(result)
+    return NextResponse.json({ messages: messages.map(m => ({ ...m, accountId: account.id })) })
   } catch (err) {
-    return NextResponse.json({ error: String(err), messages: [], total: 0 }, { status: 500 })
+    return NextResponse.json({ error: String(err), messages: [] }, { status: 500 })
   }
 }
