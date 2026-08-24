@@ -7,7 +7,6 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Mail } from 'lucide-react'
 import Link from 'next/link'
 
 export default function LoginPage() {
@@ -40,9 +39,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
-              <Mail className="w-6 h-6 text-primary-foreground" />
-            </div>
+            <img
+              src="/brand/anime/synapmail-anime.svg"
+              alt="Synapmail"
+              className="w-16 h-16"
+            />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Synapmail</h1>
           <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>

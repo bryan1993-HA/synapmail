@@ -138,9 +138,11 @@ export function Sidebar({ onClose }: SidebarProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/30">
-          <Mail className="w-4 h-4 text-white" />
-        </div>
+        <img
+          src="/brand/svg/synapmail-icone-negatif.svg"
+          alt="Synapmail"
+          className="w-8 h-8 shrink-0"
+        />
         <span className="font-bold text-base tracking-tight text-white">Synapmail</span>
         {onClose && (
           <button

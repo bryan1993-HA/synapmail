@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><defs>
+    <linearGradient data-dc-tpl="9" id="g1" x1="0" y1="0" x2="1" y2="1" data-om-id="60512856:13">
+      <stop data-dc-tpl="10" offset="0" stop-color="#16A9FF" data-om-id="60512856:14"></stop>
+      <stop data-dc-tpl="11" offset="0.52" stop-color="#3E3BF2" data-om-id="60512856:15"></stop>
+      <stop data-dc-tpl="12" offset="1" stop-color="#7B1FE3" data-om-id="60512856:16"></stop>
+    </linearGradient>
+    <linearGradient data-dc-tpl="13" id="gFlap" x1="0" y1="0" x2="0.9" y2="1" data-om-id="60512856:17">
+      <stop data-dc-tpl="14" offset="0" stop-color="#1CB4FF" data-om-id="60512856:18"></stop>
+      <stop data-dc-tpl="15" offset="0.5" stop-color="#3F3AF4" data-om-id="60512856:19"></stop>
+      <stop data-dc-tpl="16" offset="1" stop-color="#7318DE" data-om-id="60512856:20"></stop>
+    </linearGradient>
+    <linearGradient data-dc-tpl="17" id="gPaper" x1="0" y1="0" x2="0.3" y2="1" data-om-id="60512856:21">
+      <stop data-dc-tpl="18" offset="0" stop-color="#FFFFFF" data-om-id="60512856:22"></stop>
+      <stop data-dc-tpl="19" offset="1" stop-color="#EDF1FD" data-om-id="60512856:23"></stop>
+    </linearGradient>
+    <linearGradient data-dc-tpl="20" id="gPocket" x1="0" y1="0" x2="0.2" y2="1" data-om-id="60512856:24">
+      <stop data-dc-tpl="21" offset="0" stop-color="#F7F9FF" data-om-id="60512856:25"></stop>
+      <stop data-dc-tpl="22" offset="1" stop-color="#DDE4F8" data-om-id="60512856:26"></stop>
+    </linearGradient>
+    <linearGradient data-dc-tpl="23" id="gWire" x1="0" y1="0" x2="1" y2="0.4" data-om-id="60512856:27">
+      <stop data-dc-tpl="24" offset="0" stop-color="#1E7BF5" data-om-id="60512856:28"></stop>
+      <stop data-dc-tpl="25" offset="1" stop-color="#7318DE" data-om-id="60512856:29"></stop>
+    </linearGradient>
+    <radialGradient data-dc-tpl="26" id="gGloss" cx="0.5" cy="0.5" r="0.5" data-om-id="60512856:30">
+      <stop data-dc-tpl="27" offset="0" stop-color="#FFFFFF" stop-opacity="0.32" data-om-id="60512856:31"></stop>
+      <stop data-dc-tpl="28" offset="1" stop-color="#FFFFFF" stop-opacity="0" data-om-id="60512856:32"></stop>
+    </radialGradient>
+    <clipPath data-dc-tpl="29" id="cp" data-om-id="60512856:33"><rect data-dc-tpl="30" x="76" y="132" width="360" height="268" rx="46" data-om-id="60512856:34"></rect></clipPath>
+  </defs>
+    <rect data-dc-tpl="32" x="0" y="0" width="512" height="512" rx="116" fill="url(#g1)" data-om-id="60512856:36"></rect>
+    <ellipse data-dc-tpl="33" cx="152" cy="98" rx="248" ry="164" fill="url(#gGloss)" data-om-id="60512856:37"></ellipse>
+    <rect data-dc-tpl="34" x="76" y="132" width="360" height="268" rx="46" fill="url(#gPaper)" data-om-id="60512856:38"></rect>
+    <path data-dc-tpl="35" clip-path="url(#cp)" d="M256,292 L466,416 H46 Z" fill="url(#gPocket)" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round" data-om-id="60512856:39"></path>
+    <path data-dc-tpl="36" d="M76,178 A46,46 0 0 1 122,132 H390 A46,46 0 0 1 436,178 L288,296 Q256,322 224,296 Z" fill="url(#gFlap)" data-om-id="60512856:40"></path>
+    <path data-dc-tpl="37" d="M256,146 C264,196 276,208 326,216 C276,224 264,236 256,286 C248,236 236,224 186,216 C236,208 248,196 256,146 Z" fill="#FFFFFF" data-om-id="60512856:41"></path>
+    <circle data-dc-tpl="38" cx="196" cy="168" r="8" fill="#FFFFFF" data-om-id="60512856:42"></circle>
+    <circle data-dc-tpl="39" cx="322" cy="176" r="6.5" fill="#FFFFFF" data-om-id="60512856:43"></circle>
+    <circle data-dc-tpl="40" cx="212" cy="262" r="5.5" fill="#FFFFFF" data-om-id="60512856:44"></circle>
+    <g data-dc-tpl="41" fill="none" stroke="url(#gWire)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" data-om-id="60512856:45">
+      <path data-dc-tpl="42" d="M251,310 C228,330 198,336 166,338" data-om-id="60512856:46"></path>
+      <path data-dc-tpl="43" d="M261,310 C284,330 314,336 346,338" data-om-id="60512856:47"></path>
+      <path data-dc-tpl="44" d="M253,313 C246,338 234,354 218,368" data-om-id="60512856:48"></path>
+      <path data-dc-tpl="45" d="M259,313 C266,338 278,354 294,368" data-om-id="60512856:49"></path>
+      <path data-dc-tpl="46" d="M256,314 V376" data-om-id="60512856:50"></path>
+    </g>
+    <g data-dc-tpl="47" fill="url(#gWire)" data-om-id="60512856:51">
+      <circle data-dc-tpl="48" cx="157" cy="338" r="9" data-om-id="60512856:52"></circle>
+      <circle data-dc-tpl="49" cx="355" cy="338" r="9" data-om-id="60512856:53"></circle>
+      <circle data-dc-tpl="50" cx="210" cy="375" r="9" data-om-id="60512856:54"></circle>
+      <circle data-dc-tpl="51" cx="302" cy="375" r="9" data-om-id="60512856:55"></circle>
+      <circle data-dc-tpl="52" cx="256" cy="388" r="10" data-om-id="60512856:56"></circle>
+    </g>
+  </svg>

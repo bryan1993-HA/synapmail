@@ -1,11 +1,17 @@
-# Synapmail
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/public/brand/png/synapmail-logo-horizontal@2400.png" alt="Synapmail" width="480"/>
+</p>
 
-> **Self-hosted, open-source, AI-powered email client — IMAP/SMTP, multi-account, rich editor**
+<p align="center">
+  <strong>Self-hosted, open-source, AI-powered email client — IMAP/SMTP, multi-account, rich editor</strong>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](https://www.docker.com/)
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
+  <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-14-black?logo=next.js" alt="Next.js"/></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" alt="TypeScript"/></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker" alt="Docker"/></a>
+</p>
 
 > **Active Development** — Functional and production-deployed. APIs may change between versions.
 
