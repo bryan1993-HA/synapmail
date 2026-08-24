@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
-import { RefreshCw, Search, X } from 'lucide-react'
+import { RefreshCw, Search, X, Paperclip } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
 import type { Message } from '@/types/email'
@@ -334,9 +334,14 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId 
                       : (msg.from.name || msg.from.address)
                     }
                   </span>
-                  <span className={cn('text-xs shrink-0', !isRead ? 'text-blue-500 font-medium' : 'text-muted-foreground')}>
-                    {formatDate(msg.date)}
-                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {thread.messages.some(m => m.hasAttachments) && (
+                      <Paperclip className={cn('w-3 h-3', !isRead ? 'text-blue-500' : 'text-muted-foreground')} />
+                    )}
+                    <span className={cn('text-xs', !isRead ? 'text-blue-500 font-medium' : 'text-muted-foreground')}>
+                      {formatDate(msg.date)}
+                    </span>
+                  </div>
                 </div>
                 <div className={cn('text-xs truncate mb-0.5', !isRead ? 'font-semibold text-foreground' : 'text-foreground/70')}>
                   {thread.subject}

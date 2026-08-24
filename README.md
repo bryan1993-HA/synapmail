@@ -26,7 +26,8 @@
 - **Admin panel** — User management, account overview
 - **Search** — Full-text search across IMAP folders
 - **Thread view** — Conversation grouping
-- **Attachment support** — Download and attach files
+- **Attachment support** — Inline preview for images and PDFs (no download required), download always available
+- **Paperclip indicator** — Message list shows attachment icon next to date
 - **Docker-first deployment** — One command to run
 
 ---
@@ -124,7 +125,9 @@ Synapmail supports multiple independent users on one instance:
 | `GET` | `/api/folders?account=` | List IMAP folders |
 | `POST` | `/api/send` | Send an email via SMTP |
 | `GET` | `/api/search?q=&account=` | Full-text search |
-| `GET` | `/api/attachments/[id]` | Download attachment |
+| `GET` | `/api/messages/[id]/attachment/[partId]?account=&folder=&inline=` | Download or preview attachment |
+| `GET` | `/api/profile` | Get current user profile |
+| `PATCH` | `/api/profile` | Update name or password |
 | `GET` | `/api/stream` | Server-Sent Events for new mail |
 
 All endpoints require authentication. Responses follow `{ data?, error? }` shape.

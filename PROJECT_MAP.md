@@ -11,13 +11,16 @@ Quick navigation reference for every file and feature.
 | Change login page | `app/(auth)/login/page.tsx` |
 | Change email list | `components/layout/MessageList.tsx` |
 | Change email viewer | `components/layout/ReadingPane.tsx` |
-| Change compose | `components/compose/ComposeModal.tsx` |
+| Change attachment preview | `components/layout/ReadingPane.tsx` → `AttachmentSection` |
+| Change compose | `components/mail/ComposeModal.tsx` |
+| Change signature logic | `components/mail/ComposeModal.tsx` → `handleSigChange` |
 | Change sidebar/folders | `components/layout/Sidebar.tsx` |
 | Change rich editor | `components/compose/RichEditor.tsx` |
 | Add/edit translations | `locales/en.json` + `locales/fr.json` |
 | Change auth logic | `lib/auth.ts` |
 | Change DB queries | `lib/db.ts` |
-| Change IMAP logic | `lib/imap.ts` |
+| Change IMAP logic / attachment detection | `lib/imap.ts` → `detectAttachments` |
+| Change profile (name/password) | `app/(app)/settings/profile/page.tsx` + `app/api/profile/route.ts` |
 | Change SMTP logic | `lib/smtp.ts` |
 | Add API route | `app/api/` |
 | Change middleware | `middleware.ts` |
@@ -131,7 +134,9 @@ Quick navigation reference for every file and feature.
 | GET | `/api/folders?account=` | List IMAP folders |
 | POST | `/api/send` | Send email |
 | GET | `/api/search?q=&account=` | Search messages |
-| GET | `/api/attachments/[id]` | Download attachment |
+| GET | `/api/messages/[id]/attachment/[partId]?account=&folder=&inline=` | Download or preview attachment |
+| GET | `/api/profile` | Get current user profile |
+| PATCH | `/api/profile` | Update name or password |
 | GET | `/api/stream` | SSE new mail events |
 
 ---

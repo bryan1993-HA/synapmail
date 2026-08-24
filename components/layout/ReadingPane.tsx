@@ -1,11 +1,12 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Mail, Paperclip } from 'lucide-react'
+import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Mail, Paperclip, Download, X, FileText, Image as ImageIcon } from 'lucide-react'
 import useSWR from 'swr'
 import type { Message } from '@/types/email'
+import type { Attachment } from '@/types/email'
 import { Button } from '@/components/ui/button'
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -14,6 +15,161 @@ const formatBytes = (bytes: number) =>
   bytes < 1024 ? bytes + 'B'
     : bytes < 1048576 ? (bytes / 1024).toFixed(1) + 'Ko'
     : (bytes / 1048576).toFixed(1) + 'Mo'
+
+function isImage(contentType: string) {
+  return /^image\//i.test(contentType)
+}
+function isPdf(contentType: string) {
+  return contentType === 'application/pdf'
+}
+
+function AttachmentSection({
+  attachments, uid, accountId, folder,
+}: {
+  attachments: Attachment[]
+  uid: string
+  accountId: string
+  folder: string
+}) {
+  const [preview, setPreview] = useState<{ url: string; downloadUrl: string; type: 'image' | 'pdf'; filename: string } | null>(null)
+
+  const attUrl = useCallback(
+    (id: string, inline = false) =>
+      `/api/messages/${uid}/attachment/${id}?account=${accountId}&folder=${encodeURIComponent(folder)}${inline ? '&inline=true' : ''}`,
+    [uid, accountId, folder]
+  )
+
+  const openPreview = (att: Attachment) => {
+    setPreview({
+      url: attUrl(att.id, true),
+      downloadUrl: attUrl(att.id, false),
+      type: isImage(att.contentType) ? 'image' : 'pdf',
+      filename: att.filename,
+    })
+  }
+
+  return (
+    <>
+      <div className="px-6 py-4 border-t border-border">
+        <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
+          Pièces jointes ({attachments.length})
+        </p>
+
+        {/* Image thumbnails grid */}
+        {attachments.some(a => isImage(a.contentType)) && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {attachments.filter(a => isImage(a.contentType)).map(att => (
+              <button
+                key={att.id}
+                onClick={() => openPreview(att)}
+                className="relative group rounded-lg overflow-hidden border border-border hover:border-primary/50 transition-colors w-24 h-24 bg-muted/30 shrink-0"
+                title={att.filename}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={attUrl(att.id, true)}
+                  alt={att.filename}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <ImageIcon className="w-5 h-5 text-white" />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* File chips (all attachments) */}
+        <div className="flex flex-wrap gap-2">
+          {attachments.map(att => {
+            const canPreview = isImage(att.contentType) || isPdf(att.contentType)
+            return (
+              <div
+                key={att.id}
+                className="flex items-center gap-1 rounded-lg border border-border bg-muted/30 text-xs overflow-hidden"
+              >
+                {canPreview ? (
+                  <button
+                    onClick={() => openPreview(att)}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-muted/60 transition-colors"
+                    title="Prévisualiser"
+                  >
+                    {isPdf(att.contentType)
+                      ? <FileText className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      : <ImageIcon className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    }
+                    <span className="max-w-[140px] truncate text-foreground">{att.filename}</span>
+                    <span className="text-muted-foreground shrink-0">{formatBytes(att.size)}</span>
+                  </button>
+                ) : (
+                  <span className="flex items-center gap-2 px-3 py-2">
+                    <Paperclip className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="max-w-[140px] truncate text-foreground">{att.filename}</span>
+                    <span className="text-muted-foreground shrink-0">{formatBytes(att.size)}</span>
+                  </span>
+                )}
+                <a
+                  href={attUrl(att.id)}
+                  download={att.filename}
+                  className="px-2 py-2 hover:bg-muted/60 transition-colors border-l border-border text-muted-foreground hover:text-foreground"
+                  title="Télécharger"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Preview modal */}
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setPreview(null)}
+        >
+          <button
+            onClick={() => setPreview(null)}
+            className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <a
+            href={preview.downloadUrl}
+            download={preview.filename}
+            onClick={e => e.stopPropagation()}
+            className="absolute top-4 right-16 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            title="Télécharger"
+          >
+            <Download className="w-4 h-4" />
+          </a>
+          <div
+            className="max-w-5xl max-h-[90vh] w-full flex flex-col items-center gap-3"
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-white/70 text-sm truncate max-w-full">{preview.filename}</p>
+            {preview.type === 'image' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={preview.url}
+                alt={preview.filename}
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              />
+            ) : (
+              <iframe
+                src={preview.url}
+                className="w-full rounded-lg shadow-2xl bg-white"
+                style={{ height: '80vh' }}
+                title={preview.filename}
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
 
 function EmailBody({ message }: { message: Message }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -191,32 +347,19 @@ export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onForwa
         </Button>
       </div>
 
+      {/* Attachments — above body */}
+      {(message.attachments?.length ?? 0) > 0 && (
+        <AttachmentSection
+          attachments={message.attachments!}
+          uid={uid!}
+          accountId={accountId!}
+          folder={folder}
+        />
+      )}
+
       {/* Body */}
       <div className="flex-1 overflow-y-auto min-h-0">
         <EmailBody message={message} />
-
-        {/* Attachments */}
-        {(message.attachments?.length ?? 0) > 0 && (
-          <div className="px-6 py-4 border-t border-border">
-            <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-              Pièces jointes ({message.attachments!.length})
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {message.attachments!.map(att => (
-                <a
-                  key={att.id}
-                  href={`/api/messages/${uid}/attachment/${att.id}?account=${accountId}&folder=${encodeURIComponent(folder)}`}
-                  download={att.filename}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 transition-colors text-xs group"
-                >
-                  <Paperclip className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <span className="max-w-[160px] truncate text-foreground">{att.filename}</span>
-                  <span className="text-muted-foreground shrink-0">{formatBytes(att.size)}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

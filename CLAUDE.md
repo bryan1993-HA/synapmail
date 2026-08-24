@@ -43,7 +43,7 @@ app/
     settings/
       page.tsx                  # Settings index
       accounts/page.tsx         # Email accounts CRUD
-      profile/page.tsx          # User profile
+      profile/page.tsx          # User profile (name, password change)
       signatures/page.tsx       # Email signatures
     admin/
       users/page.tsx            # Admin: user management
@@ -51,13 +51,14 @@ app/
     auth/[...nextauth]/route.ts # Auth.js handlers
     accounts/route.ts           # GET list / POST create email account
     accounts/[id]/route.ts      # PATCH update / DELETE remove account
-    messages/route.ts           # GET list messages (IMAP)
+    messages/route.ts           # GET list messages (IMAP) — hasAttachments via detectAttachments()
     messages/[id]/route.ts      # GET single / DELETE
     messages/[id]/read/route.ts # PATCH mark as read
+    messages/[id]/attachment/[partId]/route.ts  # GET download or inline preview (?inline=true)
     folders/route.ts            # GET list folders
     send/route.ts               # POST send email (SMTP)
     search/route.ts             # GET full-text search
-    attachments/[id]/route.ts   # GET download attachment
+    profile/route.ts            # GET current user / PATCH name + password
     stream/route.ts             # GET Server-Sent Events (new mail notify)
 
 components/
