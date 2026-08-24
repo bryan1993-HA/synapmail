@@ -1,22 +1,56 @@
 import { ImapFlow } from 'imapflow'
+import { simpleParser } from 'mailparser'
 import { decrypt } from './encrypt'
+import { refreshAccessToken } from './msOAuth'
+import { query } from './db'
 import type { Message, Folder } from '@/types/email'
 
-interface AccountConfig {
+export interface AccountConfig {
+  id?: string
   imapHost: string
   imapPort: number
   imapSecure: boolean
   username: string
   passwordEncrypted: string
+  oauthProvider?: string | null
+  oauthAccessToken?: string | null
+  oauthRefreshToken?: string | null
+  oauthExpiresAt?: number | null
 }
 
-async function createClient(account: AccountConfig): Promise<ImapFlow> {
-  const password = decrypt(account.passwordEncrypted)
+async function getAccessToken(account: AccountConfig): Promise<string> {
+  let accessToken = account.oauthAccessToken!
+  const expiresAt = account.oauthExpiresAt ?? 0
+
+  // Refresh if expired or expiring in < 60s
+  if (Date.now() > expiresAt - 60_000 && account.oauthRefreshToken) {
+    const refreshed = await refreshAccessToken(account.oauthRefreshToken)
+    accessToken = refreshed.accessToken
+    if (account.id) {
+      await query(
+        'UPDATE email_accounts SET oauth_access_token = $1, oauth_expires_at = $2 WHERE id = $3',
+        [accessToken, refreshed.expiresAt, account.id]
+      )
+    }
+  }
+  return accessToken
+}
+
+export async function createClient(account: AccountConfig): Promise<ImapFlow> {
+  let authOpts: { user: string; pass?: string; accessToken?: string }
+
+  if (account.oauthProvider && account.oauthAccessToken) {
+    const accessToken = await getAccessToken(account)
+    authOpts = { user: account.username, accessToken }
+  } else {
+    authOpts = { user: account.username, pass: decrypt(account.passwordEncrypted) }
+  }
+
   const client = new ImapFlow({
     host: account.imapHost,
     port: account.imapPort,
     secure: account.imapSecure,
-    auth: { user: account.username, pass: password },
+    auth: authOpts,
     logger: false,
   })
   await client.connect()
@@ -94,26 +128,38 @@ export async function getMessage(
     }, { uid: true })
     if (!msg) return null
 
-    const source = msg.source?.toString() ?? ''
+    const parsed = await simpleParser(msg.source ?? Buffer.alloc(0))
 
     return {
       uid: String(msg.uid),
-      messageId: msg.envelope?.messageId ?? '',
+      messageId: parsed.messageId ?? msg.envelope?.messageId ?? '',
       from: {
-        name: msg.envelope?.from?.[0]?.name ?? '',
-        address: msg.envelope?.from?.[0]?.address ?? '',
+        name: parsed.from?.value?.[0]?.name ?? msg.envelope?.from?.[0]?.name ?? '',
+        address: parsed.from?.value?.[0]?.address ?? msg.envelope?.from?.[0]?.address ?? '',
       },
-      to: (msg.envelope?.to ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' })),
-      subject: msg.envelope?.subject ?? '(no subject)',
-      date: msg.envelope?.date?.toISOString() ?? '',
-      preview: '',
+      to: (parsed.to
+        ? (Array.isArray(parsed.to) ? parsed.to : [parsed.to])
+            .flatMap(a => a.value)
+            .map(a => ({ name: a.name ?? '', address: a.address ?? '' }))
+        : (msg.envelope?.to ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' }))
+      ),
+      subject: parsed.subject ?? msg.envelope?.subject ?? '(no subject)',
+      date: (parsed.date ?? msg.envelope?.date)?.toISOString() ?? '',
+      preview: parsed.text?.slice(0, 200) ?? '',
       isRead: msg.flags?.has('\\Seen') ?? false,
       isStarred: msg.flags?.has('\\Flagged') ?? false,
       isFlagged: msg.flags?.has('\\Flagged') ?? false,
-      hasAttachments: false,
-      bodyPlain: source,
+      hasAttachments: (parsed.attachments?.length ?? 0) > 0,
+      bodyHtml: parsed.html || undefined,
+      bodyPlain: parsed.text || undefined,
       folder,
       accountId: '',
+      attachments: parsed.attachments?.map((a, i) => ({
+        id: String(i),
+        filename: a.filename ?? `attachment-${i}`,
+        contentType: a.contentType,
+        size: a.size ?? 0,
+      })) ?? [],
     }
   } finally {
     await client.logout()
@@ -168,6 +214,25 @@ export async function markRead(
   }
 }
 
+export async function markStarred(
+  account: AccountConfig,
+  folder: string,
+  uid: string,
+  starred: boolean
+): Promise<void> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxOpen(folder)
+    if (starred) {
+      await client.messageFlagsAdd(uid, ['\\Flagged'], { uid: true })
+    } else {
+      await client.messageFlagsRemove(uid, ['\\Flagged'], { uid: true })
+    }
+  } finally {
+    await client.logout()
+  }
+}
+
 export async function listFolders(account: AccountConfig): Promise<Folder[]> {
   const client = await createClient(account)
   try {
@@ -178,6 +243,51 @@ export async function listFolders(account: AccountConfig): Promise<Folder[]> {
       delimiter: f.delimiter ?? '/',
       flags: Array.from(f.flags ?? []),
     }))
+  } finally {
+    await client.logout()
+  }
+}
+
+export async function searchMessages(
+  account: AccountConfig,
+  folder: string,
+  queryStr: string
+): Promise<Message[]> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxOpen(folder)
+    const searchResult = await client.search({
+      or: [{ from: queryStr }, { subject: queryStr }],
+    })
+    const allUids = Array.isArray(searchResult) ? searchResult : []
+    const recentUids = [...allUids].reverse().slice(0, 50)
+
+    const messages: Message[] = []
+    if (recentUids.length > 0) {
+      for await (const msg of client.fetch(recentUids as unknown as string, {
+        uid: true, flags: true, envelope: true,
+      })) {
+        messages.push({
+          uid: String(msg.uid),
+          messageId: msg.envelope?.messageId ?? '',
+          from: {
+            name: msg.envelope?.from?.[0]?.name ?? '',
+            address: msg.envelope?.from?.[0]?.address ?? '',
+          },
+          to: (msg.envelope?.to ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' })),
+          subject: msg.envelope?.subject ?? '(no subject)',
+          date: msg.envelope?.date?.toISOString() ?? '',
+          preview: '',
+          isRead: msg.flags?.has('\\Seen') ?? false,
+          isStarred: msg.flags?.has('\\Flagged') ?? false,
+          isFlagged: msg.flags?.has('\\Flagged') ?? false,
+          hasAttachments: false,
+          folder,
+          accountId: '',
+        })
+      }
+    }
+    return messages
   } finally {
     await client.logout()
   }

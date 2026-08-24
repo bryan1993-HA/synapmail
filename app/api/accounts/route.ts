@@ -11,9 +11,11 @@ export async function GET() {
 
   try {
     const accounts = await query(
-      `SELECT id, name, email, imap_host, imap_port, imap_secure,
-              smtp_host, smtp_port, smtp_secure, username,
-              is_default, color, oauth_provider, created_at
+      `SELECT id, name, email,
+              imap_host AS "imapHost", imap_port AS "imapPort", imap_secure AS "imapSecure",
+              smtp_host AS "smtpHost", smtp_port AS "smtpPort", smtp_secure AS "smtpSecure",
+              username, is_default AS "isDefault", color,
+              oauth_provider AS "oauthProvider", created_at AS "createdAt"
        FROM email_accounts WHERE user_id = $1 ORDER BY is_default DESC, created_at ASC`,
       [session.user?.id]
     )

@@ -1,12 +1,19 @@
 import nodemailer from 'nodemailer'
 import { decrypt } from './encrypt'
+import { refreshAccessToken } from './msOAuth'
+import { query } from './db'
 
 interface SmtpConfig {
+  id?: string
   smtpHost: string
   smtpPort: number
   smtpSecure: boolean
   username: string
   passwordEncrypted: string
+  oauthProvider?: string | null
+  oauthAccessToken?: string | null
+  oauthRefreshToken?: string | null
+  oauthExpiresAt?: number | null
 }
 
 export interface SendMailOptions {
@@ -26,13 +33,32 @@ export interface SendMailOptions {
   }>
 }
 
+async function getSmtpAuth(config: SmtpConfig) {
+  if (config.oauthProvider && config.oauthAccessToken) {
+    let accessToken = config.oauthAccessToken
+    const expiresAt = config.oauthExpiresAt ?? 0
+    if (Date.now() > expiresAt - 60_000 && config.oauthRefreshToken) {
+      const refreshed = await refreshAccessToken(config.oauthRefreshToken)
+      accessToken = refreshed.accessToken
+      if (config.id) {
+        await query(
+          'UPDATE email_accounts SET oauth_access_token = $1, oauth_expires_at = $2 WHERE id = $3',
+          [accessToken, refreshed.expiresAt, config.id]
+        )
+      }
+    }
+    return { type: 'OAuth2' as const, user: config.username, accessToken }
+  }
+  return { user: config.username, pass: decrypt(config.passwordEncrypted) }
+}
+
 export async function sendMail(config: SmtpConfig, options: SendMailOptions): Promise<void> {
-  const password = decrypt(config.passwordEncrypted)
+  const auth = await getSmtpAuth(config)
   const transporter = nodemailer.createTransport({
     host: config.smtpHost,
     port: config.smtpPort,
     secure: config.smtpSecure,
-    auth: { user: config.username, pass: password },
+    auth,
   })
 
   await transporter.verify()
@@ -52,12 +78,12 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
 
 export async function verifySmtp(config: SmtpConfig): Promise<boolean> {
   try {
-    const password = decrypt(config.passwordEncrypted)
+    const auth = await getSmtpAuth(config)
     const transporter = nodemailer.createTransport({
       host: config.smtpHost,
       port: config.smtpPort,
       secure: config.smtpSecure,
-      auth: { user: config.username, pass: password },
+      auth,
     })
     await transporter.verify()
     return true

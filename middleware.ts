@@ -1,38 +1,45 @@
-import { auth } from '@/lib/auth'
-import createMiddleware from 'next-intl/middleware'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { routing } from '@/lib/routing'
 
-const intlMiddleware = createMiddleware(routing)
+const PUBLIC_PATHS = ['/login', '/register', '/api/auth', '/api/register', '/api/oauth', '/_next', '/favicon']
 
-const publicRoutes = ['/login', '/register', '/api/auth', '/api/register']
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PATHS.some(p => pathname.startsWith(p))
+}
 
-export default async function middleware(req: NextRequest) {
+function getSessionCookie(req: NextRequest): string | undefined {
+  return (
+    req.cookies.get('__Secure-authjs.session-token')?.value ??
+    req.cookies.get('authjs.session-token')?.value
+  )
+}
+
+export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Allow public routes
-  if (publicRoutes.some(r => pathname.startsWith(r))) {
-    return intlMiddleware(req)
+  // API routes: only block if no session and not public
+  if (pathname.startsWith('/api/')) {
+    if (!isPublic(pathname) && !getSessionCookie(req)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    return NextResponse.next()
   }
 
-  // Check auth for all other routes
-  const session = await auth()
-  if (!session && !pathname.startsWith('/api/')) {
-    return NextResponse.redirect(new URL('/login', req.url))
-  }
-  if (!session && pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Public pages: always allow
+  if (isPublic(pathname)) {
+    return NextResponse.next()
   }
 
-  // Admin routes
-  if (pathname.startsWith('/admin') && (session?.user as { role?: string })?.role !== 'admin') {
-    return NextResponse.redirect(new URL('/mail', req.url))
+  // Protected pages: check session cookie
+  if (!getSessionCookie(req)) {
+    const loginUrl = new URL('/login', req.url)
+    loginUrl.searchParams.set('callbackUrl', pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
-  return intlMiddleware(req)
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$|.*\\.woff$|.*\\.woff2$).*)'],
 }
