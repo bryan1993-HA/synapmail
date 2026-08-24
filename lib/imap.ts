@@ -5,6 +5,25 @@ import { refreshAccessToken } from './msOAuth'
 import { query } from './db'
 import type { Message, Folder } from '@/types/email'
 
+// Recursively check bodyStructure for attachment parts.
+// In imapflow: disposition is a plain string ('attachment'|'inline'),
+// dispositionParameters holds filename, parameters holds Content-Type params (name).
+function detectAttachments(structure: Record<string, unknown> | null | undefined): boolean {
+  if (!structure) return false
+  const disp = String(structure.disposition ?? '').toLowerCase()
+  const params = structure.parameters as Record<string, string> | undefined
+  const dispParams = structure.dispositionParameters as Record<string, string> | undefined
+  // Explicit attachment disposition
+  if (disp === 'attachment') return true
+  // Non-text, non-multipart part with a filename → treated as attachment
+  const type = String(structure.type ?? '').toLowerCase()
+  if (type && type !== 'text' && type !== 'multipart' && (params?.name || dispParams?.filename)) return true
+  // Recurse into child nodes
+  const children = structure.childNodes as Record<string, unknown>[] | undefined
+  if (children?.length) return children.some(detectAttachments)
+  return false
+}
+
 export interface AccountConfig {
   id?: string
   imapHost: string
@@ -102,7 +121,7 @@ export async function listMessages(
           isRead: msg.flags?.has('\\Seen') ?? false,
           isStarred: msg.flags?.has('\\Flagged') ?? false,
           isFlagged: msg.flags?.has('\\Flagged') ?? false,
-          hasAttachments: false,
+          hasAttachments: detectAttachments(msg.bodyStructure as unknown as Record<string, unknown>),
           folder,
           accountId: '',
         })
@@ -265,7 +284,7 @@ export async function searchMessages(
     const messages: Message[] = []
     if (recentUids.length > 0) {
       for await (const msg of client.fetch(recentUids as unknown as string, {
-        uid: true, flags: true, envelope: true,
+        uid: true, flags: true, envelope: true, bodyStructure: true,
       })) {
         messages.push({
           uid: String(msg.uid),
@@ -281,7 +300,7 @@ export async function searchMessages(
           isRead: msg.flags?.has('\\Seen') ?? false,
           isStarred: msg.flags?.has('\\Flagged') ?? false,
           isFlagged: msg.flags?.has('\\Flagged') ?? false,
-          hasAttachments: false,
+          hasAttachments: detectAttachments(msg.bodyStructure as unknown as Record<string, unknown>),
           folder,
           accountId: '',
         })

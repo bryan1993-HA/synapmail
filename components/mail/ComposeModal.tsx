@@ -133,15 +133,22 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, sigApplied, signatures.length])
 
+  // Regex robust: Tiptap may output <p>-- </p>, <p>--</p>, <p>-- </p> etc.
+  const SIG_SEP_RE = /<p[^>]*>--\s*<\/p>/
+
   // Swap signature when dropdown changes
   const handleSigChange = (sigId: string) => {
     if (!editor) return
-    setSelectedSigId(sigId)
-    const sig = signatures.find(s => s.id === sigId)
+    setSelectedSigId(sigId || null)
+    const sig = sigId ? signatures.find(s => s.id === sigId) : null
     const currentHtml = editor.getHTML()
-    const sepIdx = currentHtml.indexOf('<p>-- </p>')
-    const bodyHtml = sepIdx >= 0 ? currentHtml.slice(0, sepIdx) : currentHtml
-    editor.commands.setContent(bodyHtml + (sig ? `<p>-- </p>${sig.contentHtml}` : ''))
+    // Strip everything from the separator onwards
+    const match = SIG_SEP_RE.exec(currentHtml)
+    const bodyHtml = match ? currentHtml.slice(0, match.index) : currentHtml
+    const newContent = sig
+      ? `${bodyHtml}<p>-- </p>${sig.contentHtml}`
+      : bodyHtml || '<p></p>'
+    editor.commands.setContent(newContent)
   }
 
   const setLink = () => {

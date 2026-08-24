@@ -60,11 +60,17 @@ export async function GET(
       const filename = attachment.filename ?? `attachment-${partIdx}`
       const contentType = attachment.contentType ?? 'application/octet-stream'
 
+      const inline = searchParams.get('inline') === 'true'
+      const disposition = inline
+        ? `inline; filename="${encodeURIComponent(filename)}"`
+        : `attachment; filename="${encodeURIComponent(filename)}"`
+
       return new Response(attachment.content.buffer as ArrayBuffer, {
         headers: {
           'Content-Type': contentType,
-          'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+          'Content-Disposition': disposition,
           'Content-Length': String(attachment.content.length),
+          'Cache-Control': 'private, max-age=300',
         },
       })
     } finally {
