@@ -162,6 +162,12 @@ export async function getMessage(
             .map(a => ({ name: a.name ?? '', address: a.address ?? '' }))
         : (msg.envelope?.to ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' }))
       ),
+      cc: (parsed.cc
+        ? (Array.isArray(parsed.cc) ? parsed.cc : [parsed.cc])
+            .flatMap(a => a.value)
+            .map(a => ({ name: a.name ?? '', address: a.address ?? '' }))
+        : (msg.envelope?.cc ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' }))
+      ),
       subject: parsed.subject ?? msg.envelope?.subject ?? '(no subject)',
       date: (parsed.date ?? msg.envelope?.date)?.toISOString() ?? '',
       preview: parsed.text?.slice(0, 200) ?? '',
@@ -246,6 +252,79 @@ export async function markStarred(
       await client.messageFlagsAdd(uid, ['\\Flagged'], { uid: true })
     } else {
       await client.messageFlagsRemove(uid, ['\\Flagged'], { uid: true })
+    }
+  } finally {
+    await client.logout()
+  }
+}
+
+export async function markReadBulk(
+  account: AccountConfig,
+  folder: string,
+  uids: string[],
+  read: boolean
+): Promise<void> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxOpen(folder)
+    const uidSet = uids.join(',')
+    if (read) {
+      await client.messageFlagsAdd(uidSet, ['\\Seen'], { uid: true })
+    } else {
+      await client.messageFlagsRemove(uidSet, ['\\Seen'], { uid: true })
+    }
+  } finally {
+    await client.logout()
+  }
+}
+
+export async function deleteMessagesBulk(
+  account: AccountConfig,
+  folder: string,
+  uids: string[]
+): Promise<void> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxOpen(folder)
+    await client.messageDelete(uids.join(','), { uid: true })
+  } finally {
+    await client.logout()
+  }
+}
+
+export async function moveMessagesBulk(
+  account: AccountConfig,
+  folder: string,
+  uids: string[],
+  destination: string
+): Promise<void> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxOpen(folder)
+    await client.messageMove(uids.join(','), destination, { uid: true })
+  } finally {
+    await client.logout()
+  }
+}
+
+export async function getAttachmentContent(
+  account: AccountConfig,
+  folder: string,
+  uid: string,
+  partIdx: number
+): Promise<{ content: Buffer; filename: string; contentType: string } | null> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxOpen(folder)
+    const msg = await client.fetchOne(uid, { source: true }, { uid: true })
+    if (!msg) return null
+    const parsed = await simpleParser(msg.source ?? Buffer.alloc(0))
+    const attachment = parsed.attachments?.[partIdx]
+    if (!attachment) return null
+    return {
+      content: attachment.content,
+      filename: attachment.filename ?? `attachment-${partIdx}`,
+      contentType: attachment.contentType ?? 'application/octet-stream',
     }
   } finally {
     await client.logout()

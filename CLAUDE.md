@@ -37,12 +37,15 @@ app/
   (app)/
     layout.tsx                  # App layout (requires auth) — three-column shell
     mail/
-      page.tsx                  # Main mail view (server component)
-      [folder]/page.tsx         # Dynamic folder view
-    compose/page.tsx            # Compose standalone page
+      page.tsx                  # Server component (auth guard + Suspense)
+      MailClient.tsx            # Client: orchestrates all mail UI, keyboard shortcuts, message routing
     settings/
-      page.tsx                  # Settings index
-      accounts/page.tsx         # Email accounts CRUD
+      page.tsx                  # Settings index (server component — getTranslations)
+      accounts/
+        page.tsx                # Server component — passes searchParams as props (no useSearchParams)
+        AccountsClient.tsx      # Client component — list / add (wizard) / edit modes
+        AccountWizard.tsx       # Multi-step wizard: provider grid → credentials → advanced config
+        ErrorBoundary.tsx       # React class error boundary for diagnostic output
       profile/page.tsx          # User profile (name, password change)
       signatures/page.tsx       # Email signatures
     admin/
@@ -51,12 +54,14 @@ app/
     auth/[...nextauth]/route.ts # Auth.js handlers
     accounts/route.ts           # GET list / POST create email account
     accounts/[id]/route.ts      # PATCH update / DELETE remove account
+    accounts/test/route.ts      # POST test IMAP+SMTP connection (used by wizard)
     messages/route.ts           # GET list messages (IMAP) — hasAttachments via detectAttachments()
-    messages/[id]/route.ts      # GET single / DELETE
+    messages/[id]/route.ts      # GET single / PATCH (read, star) / DELETE
     messages/[id]/read/route.ts # PATCH mark as read
     messages/[id]/attachment/[partId]/route.ts  # GET download or inline preview (?inline=true)
+    messages/bulk/route.ts      # PATCH bulk mark read/unread or move / DELETE bulk delete
     folders/route.ts            # GET list folders
-    send/route.ts               # POST send email (SMTP)
+    send/route.ts               # POST send email (SMTP + forwarded attachments re-fetched from IMAP)
     search/route.ts             # GET full-text search
     profile/route.ts            # GET current user / PATCH name + password
     stream/route.ts             # GET Server-Sent Events (new mail notify)
@@ -64,29 +69,27 @@ app/
 components/
   layout/
     AppShell.tsx                # Three-column shell container
-    Sidebar.tsx                 # Left: accounts + folders nav
-    MessageList.tsx             # Center: email list
-    ReadingPane.tsx             # Right: email content viewer
+    Sidebar.tsx                 # Left: accounts + folders nav (drag-drop targets)
+    MessageList.tsx             # Center: email list (bulk select, drag source, context menu)
+    ReadingPane.tsx             # Right: email viewer (To/Cc header, reply/replyAll/forward)
     Header.tsx                  # Top bar (search, compose, user menu)
-  compose/
-    ComposeModal.tsx            # Compose overlay modal
-    RichEditor.tsx              # Tiptap editor wrapper
-    AttachmentList.tsx          # Attachment chips
   mail/
-    MessageRow.tsx              # Single email row in list
-    MessageViewer.tsx           # Email body renderer (HTML/plain)
-    ThreadView.tsx              # Threaded conversation view
-    FolderTree.tsx              # Folder hierarchy
-  ui/                           # shadcn/ui components
-  providers.tsx                 # SessionProvider + ThemeProvider + ToastProvider
+    ComposeModal.tsx            # Compose / reply / replyAll / forward + BCC + draft auto-save
+  ui/
+    MessageContextMenu.tsx      # Right-click context menu (mark, star, move submenu, delete)
+    [shadcn components]
+
+hooks/
+  useEmailNotifications.ts      # Desktop notifications with click-to-open (synapmail:open-message)
+  useKeyboardShortcuts.ts       # Global keyboard shortcuts (c/r/a/f/Delete/#/u/Escape//)
 
 lib/
   auth.ts                       # Auth.js config — credentials provider, multi-user
   db.ts                         # PostgreSQL pool — query<T>(sql, values?)
-  imap.ts                       # imapflow wrapper — connect, list, fetch, delete, move
+  imap.ts                       # imapflow wrapper — connect, list, fetch, bulk ops, attachments
   smtp.ts                       # nodemailer wrapper — send, verify
-  accounts.ts                   # Email account CRUD helpers
-  i18n.ts                       # next-intl request config
+  encrypt.ts                    # AES-256-GCM encrypt/decrypt
+  msOAuth.ts                    # Microsoft OAuth2 token refresh
   utils.ts                      # cn() + helpers
 
 locales/
@@ -163,11 +166,29 @@ user_settings (user_id, theme, language, messages_per_page, thread_view,
 - Verify connection before saving account
 - HTML emails via Tiptap output — sanitize before sending
 
+### useSearchParams — Suspense requirement (critical)
+- Any client component using `useSearchParams()` must be wrapped in `<Suspense>` or Next.js throws a hydration error
+- **Pattern for pages**: make `page.tsx` a server component and pass `searchParams` as props to the client component — avoids `useSearchParams` entirely
+- **Pattern for layout-level components** (e.g. Sidebar): replace `useSearchParams` with `useEffect + window.location.search`
+- Never add `useSearchParams` to a client component without a Suspense boundary
+
+### SWR cache key deduplication
+- Multiple components using the same SWR key (e.g. `/api/accounts`) share the cached value from the **first** fetcher registered
+- Always use identical fetcher signatures for the same key — if Sidebar returns `{ data: [...] }`, AccountsClient must too (then extract `.data` locally)
+
+### Sidebar — account-scoped SWR keys
+- `activeAccountId` is a React state (initialized from `localStorage`, updated via the `synapmail:account-change` custom event)
+- Folder list SWR key: `/api/folders?account=<id>` — changing accounts triggers an automatic re-fetch with the correct account's folders
+- Never use a static `/api/folders` key in the Sidebar: it would return the default account's folders regardless of which account is active
+- Pattern: `useEffect` listens to `synapmail:account-change` → updates `activeAccountId` state → SWR key changes → re-fetch
+
 ### i18n (next-intl)
 - Locale detection from browser header
 - Supported: `en`, `fr`
 - Locale prefix: none (default locale = no prefix)
 - All user-facing strings in `locales/*.json`
+- Server components use `getTranslations()` from `next-intl/server`
+- Client components use `useTranslations()` from `next-intl`
 
 ### Server-Sent Events (new mail)
 - `GET /api/stream` — keeps connection open
@@ -177,6 +198,68 @@ user_settings (user_id, theme, language, messages_per_page, thread_view,
 ### Encryption
 - Email passwords stored encrypted (AES-256-GCM) using `ENCRYPTION_KEY` env var
 - Never store plain passwords
+
+### SWR response shape — CRITICAL
+- All API routes return `{ data: T }` or `{ error: string }` — never a bare array or object
+- SWR types must match: `useSWR<{ data: Folder[] }>('/api/folders?account=...')`
+- Extract locally: `const folders = response?.data ?? []`
+- **Never** type SWR as `useSWR<Folder[]>` when the route returns `{ data: [...] }` — the array methods (`.filter`, `.map`) will throw at runtime because you get the wrapper object, not the array
+
+### Bulk IMAP operations
+- `lib/imap.ts` exports: `markReadBulk`, `deleteMessagesBulk`, `moveMessagesBulk`, `getAttachmentContent`
+- UID sets passed as comma-joined string: `uids.join(',')` with `{ uid: true }` option
+- `markReadBulk(account, folder, uids, read)` → `messageFlagsAdd/Remove(['\\Seen'])`
+- `deleteMessagesBulk(account, folder, uids)` → `messageDelete(uidSet)`
+- `moveMessagesBulk(account, folder, uids, destination)` → `messageMove(uidSet, destination)`
+- Bulk API: `PATCH /api/messages/bulk` (mark read/move) + `DELETE /api/messages/bulk`
+- Body: `{ uids: string[], action: 'read'|'unread'|'move', accountId, folder, destination? }`
+
+### Drag & drop — email rows to sidebar folders
+- `MessageList` rows: `draggable` attribute + `onDragStart` stores `{ uids, accountId, folder }` via `dataTransfer.setData('application/synapmail', JSON.stringify(...))`
+- If rows are bulk-selected, dragging any of them drags the entire checked set
+- `Sidebar` folders: `onDragOver` checks `e.dataTransfer.types.includes('application/synapmail')`, calls `e.preventDefault()` to allow drop
+- `onDrop` parses the JSON, calls `PATCH /api/messages/bulk` with `action: 'move'`
+- Highlight drop target: `dragOverPath` state → `bg-blue-500/30 ring-1 ring-blue-400` CSS classes
+- No shared state/context needed — all via HTML5 dataTransfer
+
+### Right-click context menu
+- `MessageContextMenu` component in `components/ui/MessageContextMenu.tsx`
+- `ContextMenuState`: `{ x, y, uid, accountId, isRead, isStarred, folderPath }`
+- Position clamped to viewport: `Math.min(menu.x, window.innerWidth - 210)`
+- Auto-close: `mousedown` outside ref → `onClose()`, `Escape` key → `onClose()`
+- "Move to" submenu: pure CSS `group-hover:block` — no JS state; appears on hover of parent row
+- `item()` helper: calls `onClick()` then `onClose()` so menu always dismisses after action
+
+### Keyboard shortcuts
+- `hooks/useKeyboardShortcuts.ts` — single `keydown` listener registered in `MailClient`
+- Disabled when `isTyping(e)`: checks `INPUT`, `TEXTAREA`, `contentEditable`, Radix select triggers
+- Keys: `c`→compose, `r`→reply, `a`→replyAll, `f`→forward, `Delete`/`#`→delete, `u`→markUnread, `/`→focusSearch, `Escape`→closeCompose
+- Requires `currentMessage` (set by `ReadingPane.onMessageLoaded`) for message-specific actions
+- `searchInputRef` passed from `MailClient` → `MessageList` (via prop) for `/` shortcut
+
+### Draft auto-save
+- Only active in `compose` mode (not reply/replyAll/forward)
+- Key: `synapmail:draft:${accountId}` in `localStorage`
+- Auto-saves To/Cc/Bcc/Subject/body 3 seconds after last change (debounced `setTimeout`)
+- On next open: draft restored → "Brouillon restauré ×" badge in title bar
+- Draft cleared on: Send, Cancel button, close (×), or manual badge dismiss
+- Signature logic: draft content applied to editor after signature is inserted (via `pendingDraftContent` state)
+
+### Desktop notifications — click to open
+- `hooks/useEmailNotifications.ts` creates notifications with `tag: \`synapmail-\${uid}\`` for deduplication
+- `notification.onclick` dispatches `window.dispatchEvent(new CustomEvent('synapmail:open-message', { detail: { uid, accountId, folder } }))`
+- `MailClient` listens for `synapmail:open-message` → calls `handleSelect(uid, accountId)` + `setShowReadingPane(true)`
+
+### Forwarded attachments
+- Client sends only descriptors: `{ uid, accountId, folder, partIdx, filename, contentType }[]`
+- Server (`/api/send`) re-fetches each attachment from IMAP via `getAttachmentContent(account, folder, uid, partIdx)`
+- Returns `{ content: Buffer, filename, contentType }` → passed as nodemailer `attachments` array
+- Avoids encoding large files in the client request body
+
+### Custom events (cross-component communication)
+- `synapmail:account-change` — emitted by account switcher; Sidebar and MailClient listen to update active account
+- `synapmail:compose` — triggers ComposeModal open
+- `synapmail:open-message` — emitted by notification click; MailClient opens the message in ReadingPane
 
 ### Responsive Design
 - Mobile: single column (drawer for sidebar)
