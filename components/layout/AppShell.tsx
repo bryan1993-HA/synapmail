@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Menu, Mail } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -37,9 +37,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center">
-              <Mail className="w-3.5 h-3.5 text-white" />
-            </div>
+            <img
+              src="/brand/svg/synapmail-icone.svg"
+              alt="Synapmail"
+              className="w-6 h-6"
+            />
             <span className="font-bold text-sm tracking-tight">Synapmail</span>
           </div>
         </div>

@@ -10,7 +10,10 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 export const metadata: Metadata = {
   title: 'Synapmail',
   description: 'Self-hosted AI-powered email client',
-  icons: { icon: '/favicon.ico' },
+  icons: {
+    icon: '/brand/png/synapmail-favicon@64.png',
+    apple: '/brand/png/synapmail-icone@512.png',
+  },
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
