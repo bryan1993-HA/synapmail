@@ -1,14 +1,6 @@
 # Synapmail
 
-```
-  ____  _   _  _   _    _    ____  __  __    _    ___ _     
- / ___|| \ | || \ | |  / \  |  _ \|  \/  |  / \  |_ _| |    
- \___ \|  \| ||  \| | / _ \ | |_) | |\/| | / _ \  | || |    
-  ___) | |\  || |\  |/ ___ \|  __/| |  | |/ ___ \ | || |___ 
- |____/|_| \_||_| \_/_/   \_\_|   |_|  |_/_/   \_\___|_____|
-```
-
-> **Self-hosted, open-source, AI-powered email client**
+> **Self-hosted, open-source email client — IMAP/SMTP, multi-account, rich editor**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
