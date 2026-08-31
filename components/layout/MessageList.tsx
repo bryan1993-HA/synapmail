@@ -2,11 +2,12 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
-import { RefreshCw, Search, X, Paperclip, CheckSquare, Square, Trash2, Mail, MailOpen, MoveRight, ChevronDown } from 'lucide-react'
+import { RefreshCw, Search, X, Paperclip, CheckSquare, Square, Trash2, Mail, MailOpen, MoveRight, ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
-import type { Message, Folder } from '@/types/email'
+import type { Message, Folder, ReadReceipt } from '@/types/email'
 import { MessageContextMenu, type ContextMenuState } from '@/components/ui/MessageContextMenu'
+import { ScheduledPopover } from '@/components/mail/ScheduledPopover'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -93,6 +94,8 @@ interface Props {
   searchInputRef?: React.RefObject<HTMLInputElement>
 }
 
+interface AppSettings { thread_view: boolean; messages_per_page: number }
+
 export function MessageList({ folder, onSelect, onSelectThread, activeAccountId, searchInputRef }: Props) {
   const t = useTranslations('mail')
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
@@ -148,12 +151,19 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     return () => document.removeEventListener('mousedown', handler)
   }, [showMoveMenu])
 
+  const { data: settingsData } = useSWR<{ data: AppSettings }>('/api/settings', fetcher)
+  const threadView = settingsData?.data?.thread_view ?? true
+  const perPage = settingsData?.data?.messages_per_page ?? 30
+
   const accountParam = activeAccountId ? `&account=${activeAccountId}` : ''
+
+  // Detect Sent folder (path may be "Sent", "INBOX.Sent", "[Gmail]/Sent Mail", etc.)
+  const isSentFolder = /sent/i.test(folder)
 
   const { data, isValidating, mutate } = useSWR<{ messages: Message[]; total: number }>(
     debouncedSearch
       ? null
-      : `/api/messages?folder=${encodeURIComponent(folder)}&filter=${filter}&page=${page}&perPage=30${accountParam}`,
+      : `/api/messages?folder=${encodeURIComponent(folder)}&filter=${filter}&page=${page}&perPage=${perPage}${accountParam}`,
     fetcher,
     { refreshInterval: 60000 }
   )
@@ -192,7 +202,36 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   const total = data?.total ?? 0
   const loading = isSearchMode ? (!searchData && isSearching) : !data
 
-  const threads = useMemo(() => groupIntoThreads(messages), [messages])
+  // Tracking status for Sent folder — batch fetch by subject (avoids Outlook Message-ID rewrite)
+  const sentSubjects = isSentFolder
+    ? messages.map(m => m.subject).filter(Boolean).join('|||')
+    : ''
+  const trackingKey = isSentFolder && sentSubjects && activeAccountId
+    ? `/api/track/status?accountId=${activeAccountId}&subjects=${encodeURIComponent(sentSubjects)}`
+    : null
+  const { data: trackingData } = useSWR<{ data: Record<string, ReadReceipt> }>(
+    trackingKey,
+    fetcher,
+    { refreshInterval: 30000 }
+  )
+  const trackingMap = trackingData?.data ?? {}
+
+  const threads = useMemo<ThreadGroup[]>(() => {
+    if (!threadView) {
+      // Mode liste plate — chaque message est son propre thread
+      return [...messages]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .map(msg => ({
+          key: msg.uid,
+          subject: displaySubject(msg.subject),
+          messages: [msg],
+          lastMessage: msg,
+          hasUnread: !msg.isRead,
+          count: 1,
+        }))
+    }
+    return groupIntoThreads(messages)
+  }, [messages, threadView])
 
   const allVisibleUids = useMemo(() => threads.map(t => t.lastMessage.uid), [threads])
   const isAllChecked = allVisibleUids.length > 0 && allVisibleUids.every(uid => checkedUids.has(uid))
@@ -449,6 +488,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
           <button onClick={handleRefresh} disabled={isValidating} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
             <RefreshCw className={cn('w-3.5 h-3.5', isValidating && 'animate-spin')} />
           </button>
+          <ScheduledPopover />
         </div>
       ) : (
         <div className="px-4 py-2 border-b border-border shrink-0">
@@ -501,7 +541,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
               onDragEnd={handleDragEnd}
               onContextMenu={e => handleContextMenu(e, thread)}
               className={cn(
-                'w-full text-left flex gap-3 px-4 py-3 border-b border-border/40 transition-colors duration-150 border-l-[3px] cursor-pointer select-none',
+                'group/row w-full text-left flex gap-3 px-4 py-3 border-b border-border/40 transition-colors duration-150 border-l-[3px] cursor-pointer select-none',
                 isDragging && 'opacity-40',
                 isChecked ? 'bg-primary/10 border-l-primary'
                   : isSelected ? 'bg-primary/10 border-l-primary'
@@ -541,11 +581,44 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
                       : (msg.from.name || msg.from.address)
                     }
                   </span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {thread.messages.some(m => m.hasAttachments) && <Paperclip className="w-3 h-3 text-muted-foreground" />}
-                    <span className={cn('text-xs tabular-nums', !isRead ? 'text-primary font-medium' : 'text-muted-foreground')}>
-                      {formatDate(msg.date)}
-                    </span>
+                  <div className="flex items-center shrink-0">
+                    {/* Quick actions — shown on hover */}
+                    <div className="hidden group-hover/row:flex items-center gap-0.5 mr-0.5">
+                      <button
+                        onClick={e => { e.stopPropagation(); apiDelete(msg.uid, msg.accountId || activeAccountId || '') }}
+                        className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); apiMarkRead(msg.uid, msg.accountId || activeAccountId || '', !isRead) }}
+                        className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        title={isRead ? 'Marquer non lu' : 'Marquer lu'}
+                      >
+                        {isRead ? <Mail className="w-3.5 h-3.5" /> : <MailOpen className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    {/* Date + paperclip + tracking — hidden on hover */}
+                    <div className="flex items-center gap-1 group-hover/row:hidden">
+                      {thread.messages.some(m => m.hasAttachments) && <Paperclip className="w-3 h-3 text-muted-foreground" />}
+                      {isSentFolder && (() => {
+                        const receipt = trackingMap[msg.subject]
+                        if (!receipt) return null
+                        return receipt.opened ? (
+                          <span title={receipt.openedAt ? `Lu le ${new Date(receipt.openedAt).toLocaleString()}` : 'Lu'}>
+                            <Eye className="w-3 h-3 text-emerald-500" />
+                          </span>
+                        ) : (
+                          <span title="Non ouvert">
+                            <EyeOff className="w-3 h-3 text-muted-foreground/50" />
+                          </span>
+                        )
+                      })()}
+                      <span className={cn('text-xs tabular-nums', !isRead ? 'text-primary font-medium' : 'text-muted-foreground')}>
+                        {formatDate(msg.date)}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className={cn('text-xs truncate mb-0.5', !isRead ? 'font-semibold text-foreground' : 'text-foreground/70')}>

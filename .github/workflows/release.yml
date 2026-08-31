@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for changelog generation
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          PREV=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed -n '2p')
+          echo "tag=${PREV}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREV_TAG="${{ steps.prev_tag.outputs.tag }}"
+
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+            echo "### Premier release — historique complet" > /tmp/changelog.md
+          else
+            RANGE="${PREV_TAG}..${CURRENT_TAG}"
+          fi
+
+          # Catégoriser les commits par type (conventional commits)
+          FEATURES=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -iE "^feat(\(.+\))?[!:]" || true)
+          FIXES=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -iE "^fix(\(.+\))?[!:]" || true)
+          DOCS=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -iE "^docs(\(.+\))?[!:]" || true)
+          CHORES=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -iE "^(chore|refactor|style|test|build|ci)(\(.+\))?[!:]" || true)
+          OTHERS=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -ivE "^(feat|fix|docs|chore|refactor|style|test|build|ci)(\(.+\))?[!:]" || true)
+
+          {
+            if [ -n "$FEATURES" ]; then
+              echo "### ✨ Nouvelles fonctionnalités"
+              echo ""
+              echo "$FEATURES" | while IFS= read -r line; do
+                # Nettoyer le préfixe feat: / feat(scope):
+                clean=$(echo "$line" | sed -E 's/^feat(\([^)]+\))?[!]?: //')
+                echo "- $clean"
+              done
+              echo ""
+            fi
+
+            if [ -n "$FIXES" ]; then
+              echo "### 🐛 Corrections"
+              echo ""
+              echo "$FIXES" | while IFS= read -r line; do
+                clean=$(echo "$line" | sed -E 's/^fix(\([^)]+\))?[!]?: //')
+                echo "- $clean"
+              done
+              echo ""
+            fi
+
+            if [ -n "$DOCS" ]; then
+              echo "### 📚 Documentation"
+              echo ""
+              echo "$DOCS" | while IFS= read -r line; do
+                clean=$(echo "$line" | sed -E 's/^docs(\([^)]+\))?[!]?: //')
+                echo "- $clean"
+              done
+              echo ""
+            fi
+
+            if [ -n "$CHORES" ]; then
+              echo "### 🔧 Maintenance"
+              echo ""
+              echo "$CHORES" | while IFS= read -r line; do
+                clean=$(echo "$line" | sed -E 's/^(chore|refactor|style|test|build|ci)(\([^)]+\))?[!]?: //')
+                echo "- $clean"
+              done
+              echo ""
+            fi
+
+            if [ -n "$OTHERS" ]; then
+              echo "### 📦 Autres changements"
+              echo ""
+              echo "$OTHERS" | while IFS= read -r line; do
+                echo "- $line"
+              done
+              echo ""
+            fi
+
+            echo "---"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              echo "**Diff complet** : [\`${PREV_TAG}...${CURRENT_TAG}\`](https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${CURRENT_TAG})"
+            fi
+          } >> /tmp/changelog.md
+
+          # Échapper pour GITHUB_OUTPUT (multiline)
+          {
+            echo 'body<<EOF'
+            cat /tmp/changelog.md
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Synapmail ${{ github.ref_name }}"
+          body: ${{ steps.changelog.outputs.body }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

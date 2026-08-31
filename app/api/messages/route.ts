@@ -56,7 +56,8 @@ export async function GET(req: Request) {
       folder,
       page,
       perPage,
-      filter
+      filter,
+      session.user?.id
     )
 
     result.messages = result.messages.map(m => ({ ...m, accountId: account.id }))

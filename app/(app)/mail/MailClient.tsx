@@ -8,8 +8,10 @@ import { MessageList } from '@/components/layout/MessageList'
 import { ReadingPane } from '@/components/layout/ReadingPane'
 import { ThreadPane } from '@/components/layout/ThreadPane'
 import { ComposeModal } from '@/components/mail/ComposeModal'
+import { MdnToast } from '@/components/mail/MdnToast'
 import { useEmailNotifications } from '@/hooks/useEmailNotifications'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { toast } from '@/components/ui/toast'
 import type { Message } from '@/types/email'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -26,7 +28,21 @@ export function MailClient() {
   const [composeReplyTo, setComposeReplyTo] = useState<Message | null>(null)
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
   const [showReadingPane, setShowReadingPane] = useState(false)
+  const settingsPaneInitialized = useRef(false)
   const [currentMessage, setCurrentMessage] = useState<Message | null>(null)
+  const [mdnToast, setMdnToast] = useState<{
+    uid: string; accountId: string; folder: string;
+    fromName: string; subject: string; dispositionNotificationTo: string
+  } | null>(null)
+  // Track which UIDs already had the MDN toast shown to avoid re-showing
+  const shownMdnUids = useRef<Set<string>>(new Set())
+
+  // Resizable list column
+  const [listWidth, setListWidth] = useState(320)
+  const listWidthRef = useRef(320)
+  const isResizingRef = useRef(false)
+  const startXRef = useRef(0)
+  const startWidthRef = useRef(0)
 
   // Ref for focusing search input via keyboard shortcut
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -39,6 +55,49 @@ export function MailClient() {
       const stored = localStorage.getItem('synapmail:activeAccountId')
       if (stored) setActiveAccountId(stored)
     }
+  }, [])
+
+  useEffect(() => {
+    const stored = localStorage.getItem('synapmail:listWidth')
+    if (stored) {
+      const w = parseInt(stored)
+      if (w >= 240 && w <= 600) {
+        setListWidth(w)
+        listWidthRef.current = w
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return
+      const delta = e.clientX - startXRef.current
+      const newWidth = Math.min(600, Math.max(240, startWidthRef.current + delta))
+      listWidthRef.current = newWidth
+      setListWidth(newWidth)
+    }
+    const handleMouseUp = () => {
+      if (!isResizingRef.current) return
+      isResizingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem('synapmail:listWidth', String(listWidthRef.current))
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizingRef.current = true
+    startXRef.current = e.clientX
+    startWidthRef.current = listWidthRef.current
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
   }, [])
 
   useEffect(() => {
@@ -72,6 +131,19 @@ export function MailClient() {
     return () => window.removeEventListener('synapmail:open-message', handler)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const { data: settingsData } = useSWR<{ data: { reading_pane: boolean; notifications: boolean } }>(
+    '/api/settings',
+    fetcher
+  )
+
+  // Initialize showReadingPane from DB setting (once, before any user interaction)
+  useEffect(() => {
+    if (settingsData?.data && !settingsPaneInitialized.current) {
+      settingsPaneInitialized.current = true
+      setShowReadingPane(settingsData.data.reading_pane)
+    }
+  }, [settingsData])
+
   const { data: accountsData } = useSWR<{ data: { id: string; email: string; isDefault?: boolean }[] }>(
     '/api/accounts',
     fetcher
@@ -82,6 +154,26 @@ export function MailClient() {
   const activeAccount = accounts.find(a => a.id === resolvedActiveId) ?? accounts[0]
   const accountEmail = activeAccount?.email ?? ''
   const accountId = selectedAccount ?? resolvedActiveId ?? ''
+
+  // SSE connection — receives scheduled_sent events from the server
+  useEffect(() => {
+    const es = new EventSource('/api/stream')
+    es.onmessage = (e: MessageEvent<string>) => {
+      try {
+        const data = JSON.parse(e.data) as { type: string; subject?: string; to?: string }
+        if (data.type === 'scheduled_sent') {
+          toast.add({
+            title: 'Email envoyé',
+            description: `"${data.subject}" → ${data.to}`,
+            type: 'success',
+            timeout: 6000,
+          })
+          window.dispatchEvent(new CustomEvent('synapmail:scheduled-sent'))
+        }
+      } catch { /* ignore malformed */ }
+    }
+    return () => es.close()
+  }, [])
 
   useEmailNotifications(folder, resolvedActiveId)
 
@@ -156,6 +248,25 @@ export function MailClient() {
   }, [folder, handleDelete])
 
   // Keyboard shortcut: mark unread
+  const handleMessageLoaded = useCallback((msg: Message) => {
+    setCurrentMessage(msg)
+    // Show MDN toast if requested and not already shown for this message
+    if (
+      msg.dispositionNotificationTo &&
+      !shownMdnUids.current.has(msg.uid)
+    ) {
+      shownMdnUids.current.add(msg.uid)
+      setMdnToast({
+        uid: msg.uid,
+        accountId: msg.accountId,
+        folder: msg.folder,
+        fromName: msg.from.name || msg.from.address,
+        subject: msg.subject,
+        dispositionNotificationTo: msg.dispositionNotificationTo,
+      })
+    }
+  }, [])
+
   const handleKbMarkUnread = useCallback(async (uid: string, accId: string) => {
     await fetch(`/api/messages/${uid}?account=${accId}&folder=${encodeURIComponent(folder)}`, {
       method: 'PATCH',
@@ -202,7 +313,10 @@ export function MailClient() {
 
   return (
     <div className="flex h-full min-h-0">
-      <div className={`${showReadingPane ? 'hidden lg:flex' : 'flex'} w-full lg:w-80 shrink-0 border-r border-border flex-col`}>
+      <div
+        className={`${showReadingPane ? 'hidden lg:flex' : 'flex'} shrink-0 flex-col border-r border-border`}
+        style={{ width: listWidth }}
+      >
         <MessageList
           folder={folder}
           selectedUid={listSelectedUid}
@@ -212,6 +326,12 @@ export function MailClient() {
           searchInputRef={searchInputRef}
         />
       </div>
+
+      {/* Resize handle — desktop only */}
+      <div
+        className="hidden lg:block w-1 shrink-0 bg-transparent hover:bg-primary/30 active:bg-primary/50 cursor-col-resize transition-colors"
+        onMouseDown={handleResizeStart}
+      />
 
       <div className={`${showReadingPane ? 'flex' : 'hidden lg:flex'} flex-col flex-1 overflow-hidden min-w-0`}>
         {showReadingPane && (
@@ -242,7 +362,7 @@ export function MailClient() {
               onReply={handleReply}
               onReplyAll={handleReplyAll}
               onForward={handleForward}
-              onMessageLoaded={setCurrentMessage}
+              onMessageLoaded={handleMessageLoaded}
             />
           )}
         </div>
@@ -256,6 +376,18 @@ export function MailClient() {
           accountId={accountId}
           onClose={() => { setComposeMode(null); setComposeReplyTo(null) }}
           onSent={() => { setComposeMode(null); setComposeReplyTo(null) }}
+        />
+      )}
+
+      {mdnToast && (
+        <MdnToast
+          uid={mdnToast.uid}
+          accountId={mdnToast.accountId}
+          folder={mdnToast.folder}
+          fromName={mdnToast.fromName}
+          subject={mdnToast.subject}
+          dispositionNotificationTo={mdnToast.dispositionNotificationTo}
+          onDismiss={() => setMdnToast(null)}
         />
       )}
     </div>

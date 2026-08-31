@@ -88,7 +88,19 @@ export async function GET(req: Request) {
       return a.name.localeCompare(b.name)
     })
 
-    return NextResponse.json({ data: normalized })
+    // Unread counts from cache
+    const unreadRows = await query<{ folder: string; unread_count: string }>(
+      `SELECT folder, COUNT(*) as unread_count FROM messages_cache WHERE account_id = $1 AND is_read = false GROUP BY folder`,
+      [account.id]
+    )
+    const unreadMap = Object.fromEntries(unreadRows.map(r => [r.folder, parseInt(r.unread_count)]))
+
+    const withCounts = normalized.map(f => ({
+      ...f,
+      unreadCount: unreadMap[f.path] ?? 0,
+    }))
+
+    return NextResponse.json({ data: withCounts })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

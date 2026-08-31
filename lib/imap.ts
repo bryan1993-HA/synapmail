@@ -3,7 +3,18 @@ import { simpleParser } from 'mailparser'
 import { decrypt } from './encrypt'
 import { refreshAccessToken } from './msOAuth'
 import { query } from './db'
-import type { Message, Folder } from '@/types/email'
+import { upsertContact } from './contacts'
+import type { Message, Folder, AuthResults } from '@/types/email'
+
+function normalizeSubjectForThread(subject: string): string {
+  let prev = ''
+  let s = (subject ?? '').trim()
+  while (s !== prev) {
+    prev = s
+    s = s.replace(/^(Re|Rép|Fwd|Fw|TR|AW|SV|VS):\s*/gi, '').trim()
+  }
+  return s.toLowerCase() || 'no-subject'
+}
 
 // Recursively check bodyStructure for attachment parts.
 // In imapflow: disposition is a plain string ('attachment'|'inline'),
@@ -22,6 +33,24 @@ function detectAttachments(structure: Record<string, unknown> | null | undefined
   const children = structure.childNodes as Record<string, unknown>[] | undefined
   if (children?.length) return children.some(detectAttachments)
   return false
+}
+
+function parseAuthResults(headerLines: ReadonlyArray<{ key: string; line: string }>): AuthResults {
+  const raw = headerLines
+    .filter(h => h.key === 'authentication-results')
+    .map(h => h.line.replace(/^authentication-results:\s*/i, ''))
+    .join(' ')
+
+  const extract = (key: string): 'pass' | 'fail' | 'none' => {
+    const match = raw.match(new RegExp(`\\b${key}=(\\w+)`, 'i'))
+    if (!match) return 'none'
+    const val = match[1].toLowerCase()
+    if (val === 'pass') return 'pass'
+    if (['fail', 'softfail', 'reject', 'permerror', 'temperror', 'hardfail'].includes(val)) return 'fail'
+    return 'none'
+  }
+
+  return { spf: extract('spf'), dkim: extract('dkim'), dmarc: extract('dmarc') }
 }
 
 export interface AccountConfig {
@@ -81,7 +110,8 @@ export async function listMessages(
   folder: string,
   page: number,
   perPage: number,
-  filter: 'all' | 'unread' | 'starred' = 'all'
+  filter: 'all' | 'unread' | 'starred' = 'all',
+  userId?: string
 ): Promise<{ messages: Message[]; total: number }> {
   const client = await createClient(account)
   try {
@@ -106,7 +136,23 @@ export async function listMessages(
     if (pageUids.length > 0) {
       for await (const msg of client.fetch(pageUids as unknown as string, {
         uid: true, flags: true, envelope: true, bodyStructure: true,
-      })) {
+        size: true,
+        headers: ['list-unsubscribe', 'x-priority'],
+      } as Parameters<typeof client.fetch>[1])) {
+        const subject = msg.envelope?.subject ?? '(no subject)'
+        // Thread ID: use In-Reply-To from envelope if available (chained reply), else normalized subject
+        const inReplyTo = (msg.envelope as Record<string, unknown>)?.inReplyTo as string | undefined
+        const threadId = inReplyTo
+          ? inReplyTo.trim().replace(/[<>]/g, '').split(/\s+/)[0]
+          : normalizeSubjectForThread(subject)
+
+        // Parse optional headers and size fetched in batch (cast via unknown — imapflow dynamic fields)
+        const msgAny = msg as unknown as Record<string, unknown>
+        const hdrs = msgAny.headers as Map<string, string[]> | undefined
+        const listUnsub = hdrs?.get('list-unsubscribe')?.[0] ?? undefined
+        const xPriorityRaw = hdrs?.get('x-priority')?.[0]
+        const xPriority = xPriorityRaw ? parseInt(xPriorityRaw.trim(), 10) || undefined : undefined
+
         messages.push({
           uid: String(msg.uid),
           messageId: msg.envelope?.messageId ?? '',
@@ -115,17 +161,58 @@ export async function listMessages(
             address: msg.envelope?.from?.[0]?.address ?? '',
           },
           to: (msg.envelope?.to ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' })),
-          subject: msg.envelope?.subject ?? '(no subject)',
+          subject,
           date: msg.envelope?.date?.toISOString() ?? '',
           preview: '',
           isRead: msg.flags?.has('\\Seen') ?? false,
           isStarred: msg.flags?.has('\\Flagged') ?? false,
           isFlagged: msg.flags?.has('\\Flagged') ?? false,
           hasAttachments: detectAttachments(msg.bodyStructure as unknown as Record<string, unknown>),
+          threadId,
           folder,
           accountId: '',
+          size: msgAny.size as number | undefined,
+          listUnsubscribe: listUnsub,
+          xPriority,
         })
       }
+    }
+
+    // Upsert messages_cache — fire-and-forget, non-bloquant
+    // RETURNING xmax: 0 = nouvelle ligne (message jamais vu) → tracker le contact une seule fois
+    if (account.id && messages.length > 0) {
+      const accountId = account.id
+      void (async () => {
+        try {
+          for (const m of messages) {
+            const result = await query<{ xmax: string }>(
+              `INSERT INTO messages_cache
+                (account_id, folder, uid, message_id, from_address, from_name, subject, date,
+                 is_read, is_starred, is_flagged, has_attachments, preview, thread_id, cached_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+               ON CONFLICT (account_id, folder, uid) DO UPDATE SET
+                 is_read = EXCLUDED.is_read,
+                 is_starred = EXCLUDED.is_starred,
+                 is_flagged = EXCLUDED.is_flagged,
+                 thread_id = EXCLUDED.thread_id,
+                 cached_at = NOW()
+               RETURNING xmax::text`,
+              [
+                accountId, folder, m.uid, m.messageId,
+                m.from.address, m.from.name, m.subject, m.date,
+                m.isRead, m.isStarred, m.isFlagged, m.hasAttachments,
+                m.preview, m.threadId ?? null,
+              ]
+            )
+            // xmax = 0 → INSERT réel (message découvert pour la première fois) → 1 seule incrémentation
+            // Exclure sa propre adresse (ex: TrueNAS envoie depuis l'adresse de l'utilisateur)
+            if (userId && result[0]?.xmax === '0' && m.from.address
+              && m.from.address.toLowerCase() !== account.username.toLowerCase()) {
+              upsertContact(userId, { name: m.from.name, address: m.from.address }, 'received').catch(() => {})
+            }
+          }
+        } catch { /* non-bloquant */ }
+      })()
     }
 
     return { messages, total }
@@ -168,6 +255,11 @@ export async function getMessage(
             .map(a => ({ name: a.name ?? '', address: a.address ?? '' }))
         : (msg.envelope?.cc ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' }))
       ),
+      replyTo: (() => {
+        const rt = parsed.replyTo?.value?.[0]
+        if (!rt?.address) return undefined
+        return { name: rt.name ?? '', address: rt.address }
+      })(),
       subject: parsed.subject ?? msg.envelope?.subject ?? '(no subject)',
       date: (parsed.date ?? msg.envelope?.date)?.toISOString() ?? '',
       preview: parsed.text?.slice(0, 200) ?? '',
@@ -179,6 +271,18 @@ export async function getMessage(
       bodyPlain: parsed.text || undefined,
       folder,
       accountId: '',
+      authResults: parseAuthResults(parsed.headerLines ?? []),
+      listUnsubscribe: (() => {
+        const line = parsed.headerLines?.find(h => h.key === 'list-unsubscribe')
+        if (!line) return undefined
+        // Strip "List-Unsubscribe: " prefix from raw header line
+        return line.line.replace(/^list-unsubscribe:\s*/i, '').trim() || undefined
+      })(),
+      dispositionNotificationTo: (() => {
+        const line = parsed.headerLines?.find(h => h.key === 'disposition-notification-to')
+        if (!line) return undefined
+        return line.line.replace(/^disposition-notification-to:\s*/i, '').trim() || undefined
+      })(),
       attachments: parsed.attachments?.map((a, i) => ({
         id: String(i),
         filename: a.filename ?? `attachment-${i}`,

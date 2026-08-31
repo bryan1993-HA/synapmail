@@ -10,12 +10,19 @@ export function useEmailNotifications(folder: string, accountId?: string) {
   const lastUidRef = useRef<string | null>(null)
   const isFirstLoad = useRef(true)
 
+  const { data: settingsData } = useSWR<{ data: { notifications: boolean } }>(
+    '/api/settings',
+    fetcher
+  )
+
+  const notificationsEnabled = settingsData?.data?.notifications !== false
+
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (Notification.permission === 'default') {
+    if (notificationsEnabled && Notification.permission === 'default') {
       Notification.requestPermission()
     }
-  }, [])
+  }, [notificationsEnabled])
 
   const accountParam = accountId ? `&account=${accountId}` : ''
   const swrKey = `/api/messages?folder=${encodeURIComponent(folder)}&page=1&perPage=5${accountParam}`
@@ -37,6 +44,8 @@ export function useEmailNotifications(folder: string, accountId?: string) {
       if (newestUid && newestUid !== lastUidRef.current) {
         lastUidRef.current = newestUid
 
+        if (!notificationsEnabled) return
+
         if (Notification.permission === 'granted') {
           try {
             const senderName = newest.from.name || newest.from.address
@@ -46,7 +55,7 @@ export function useEmailNotifications(folder: string, accountId?: string) {
 
             const notification = new Notification(`${senderName}`, {
               body: `${newest.subject}${preview && preview !== newest.subject ? `\n${preview}` : ''}`,
-              icon: '/favicon.ico',
+              icon: '/brand/png/synapmail-favicon@64.png',
               tag: `synapmail-${newest.uid}`, // prevent duplicates
               requireInteraction: false,
               silent: false,

@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: synapmail_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: synapmail_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: synapmail
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapmail_user -d synapmail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  synapmail:
+    build: .
+    container_name: synapmail
+    restart: unless-stopped
+    ports:
+      - "3500:3000"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+
+volumes:
+  postgres_data:
