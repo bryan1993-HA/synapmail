@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/bryan1993-HA/synapmail/security/advisories/new
+    about: Please report security issues via GitHub private advisory (not a public issue)
+  - name: Questions & discussions
+    url: https://github.com/bryan1993-HA/synapmail/discussions
+    about: Ask questions and share ideas in Discussions
