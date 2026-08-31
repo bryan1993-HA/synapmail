@@ -11,6 +11,9 @@
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-14-black?logo=next.js" alt="Next.js"/></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" alt="TypeScript"/></a>
   <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker" alt="Docker"/></a>
+  <a href="https://github.com/bryan1993-HA/synapmail/pkgs/container/synapmail"><img src="https://img.shields.io/badge/ghcr.io-available-24292e?logo=github" alt="GitHub Container Registry"/></a>
+  <a href="https://github.com/bryan1993-HA/synapmail/actions/workflows/ci.yml"><img src="https://github.com/bryan1993-HA/synapmail/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="https://github.com/bryan1993-HA/synapmail/actions/workflows/docker.yml"><img src="https://github.com/bryan1993-HA/synapmail/actions/workflows/docker.yml/badge.svg" alt="Docker Build"/></a>
 </p>
 
 > **Active Development** — Functional and production-deployed. APIs may change between versions.
@@ -87,23 +90,30 @@
 
 ## Screenshots
 
-> _Screenshots available in [`public/screenshots/`](public/screenshots/)_
+<!-- Replace these placeholders with actual screenshots committed to docs/screenshots/ -->
+<!-- Example: ![Inbox](https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/inbox.png) -->
+
+| Inbox | Compose | Settings |
+|-------|---------|----------|
+| ![Inbox](https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/inbox.png) | ![Compose](https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/compose.png) | ![Settings](https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/settings.png) |
+
+> Screenshots update with each release. To contribute screenshots, see [`docs/screenshots/`](docs/screenshots/).
 
 ---
 
 ## Installation
 
-Three supported methods — choose the one that fits your setup.
+Four supported methods — choose the one that fits your setup.
 
 ---
 
-### Option A — Docker Compose _(recommended)_
+### Option A — Docker Compose with pre-built image _(recommended — no build required)_
 
-> **Requires**: Docker + Docker Compose. Includes PostgreSQL — nothing else needed.
+> **Requires**: Docker + Docker Compose. Pulls the latest image from `ghcr.io` — no compilation needed.
 
 ```bash
-git clone https://github.com/bryan1993-HA/synapmail.git
-cd synapmail
+curl -O https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/.env.example
 cp .env.example .env
 ```
 
@@ -121,34 +131,42 @@ DATABASE_URL=postgresql://synapmail_user:a-strong-password@postgres:5432/synapma
 ```
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 The app will be available at `http://localhost:3500`.  
 The database schema is created automatically on first boot.
 
+> **Pin a specific version**: edit `docker-compose.yml` and replace `ghcr.io/bryan1993-HA/synapmail:latest` with e.g. `ghcr.io/bryan1993-ha/synapmail:1.2.0`.
+
 ---
 
-### Option B — Docker only (external PostgreSQL)
+### Option B — Docker Compose from source _(for contributors)_
 
-> **Requires**: Docker. Use this if you already have a PostgreSQL instance (e.g. Supabase, Railway, or your own server).
+> **Requires**: Docker + Docker Compose. Builds the image locally from the cloned repo.
 
 ```bash
 git clone https://github.com/bryan1993-HA/synapmail.git
 cd synapmail
 cp .env.example .env
-```
-
-Edit `.env` — set `DATABASE_URL` to point to your existing PostgreSQL instance, then:
-
-```bash
-docker build -t synapmail .
-docker run -d --name synapmail -p 3500:3000 --env-file .env synapmail
+# fill in .env values
+docker compose up -d --build
 ```
 
 ---
 
-### Option C — Manual (Node.js)
+### Option C — Docker only (external PostgreSQL)
+
+> **Requires**: Docker. Use this if you already have a PostgreSQL instance (e.g. Supabase, Railway, or your own server).
+
+```bash
+docker pull ghcr.io/bryan1993-ha/synapmail:latest
+docker run -d --name synapmail -p 3500:3000 --env-file .env ghcr.io/bryan1993-ha/synapmail:latest
+```
+
+---
+
+### Option D — Manual (Node.js)
 
 > **Requires**: Node.js 20+, an existing PostgreSQL instance.
 
