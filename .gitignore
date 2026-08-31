@@ -16,6 +16,9 @@
 # production
 /build
 
+# Claude Code (IDE tooling — not part of the project)
+.claude/
+
 # misc
 .DS_Store
 *.pem
