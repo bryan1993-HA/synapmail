@@ -1,21 +1,43 @@
 # Screenshots
 
-This folder contains screenshots used in the main README.
+Screenshots used in the main README, generated automatically with fictional data.
 
-## How to update
+## ⚠️ Important — regenerate after UI changes
 
-1. Run Synapmail locally: `npm run dev`
-2. Take screenshots at 1280×800 (desktop) or 390×844 (mobile)
-3. Save as PNG with descriptive names: `inbox.png`, `compose.png`, `settings.png`, etc.
-4. Commit and push — the README will update automatically via raw.githubusercontent.com URLs
+**Whenever you modify the visual appearance of the app** (layout, colors, new components, redesign), re-run the script below and commit the updated images. Stale screenshots give a bad first impression to new visitors.
 
-## Expected files
+## How to regenerate
+
+Requirements: Docker running on the host.
+
+```bash
+# 1. Create the demo user (one-time, delete after)
+docker exec <postgres_container> psql -U synapmail_user -d synapmail -c \
+  "INSERT INTO users (email, name, password_hash, role) VALUES ('demo@synapmail.test', 'Demo', '<bcrypt_hash>', 'admin');"
+
+# 2. Run the script (uses the Playwright Docker image — no local install needed)
+docker run --rm \
+  -v $(pwd)/scripts/gen-screenshots.mjs:/app/screenshots.mjs \
+  -v $(pwd)/docs/screenshots:/screenshots \
+  --network host \
+  mcr.microsoft.com/playwright:v1.62.1-noble \
+  /bin/bash -c "cd /app && npm init -y -q && npm install playwright -q && node screenshots.mjs"
+
+# 3. Delete the demo user
+docker exec <postgres_container> psql -U synapmail_user -d synapmail -c \
+  "DELETE FROM users WHERE email = 'demo@synapmail.test';"
+
+# 4. Commit
+git add docs/screenshots/
+git commit -m "docs: update screenshots"
+git push
+```
+
+## Files
 
 | File | Description |
 |------|-------------|
-| `inbox.png` | Three-column layout, inbox open |
-| `compose.png` | Compose modal with rich editor |
-| `settings.png` | Settings panel (accounts or appearance) |
-| `security.png` | Security banner on phishing email (optional) |
-| `rules.png` | Rules engine page (optional) |
-| `mobile.png` | Mobile view (optional) |
+| `inbox.png` | Three-column layout with fictional message list |
+| `compose.png` | Compose modal with rich editor open |
+| `settings.png` | Settings panel (email accounts page) |
+| `mobile.png` | Mobile view (390px) |
