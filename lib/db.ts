@@ -210,6 +210,22 @@ export async function initDb(): Promise<void> {
   `)
   await query(`CREATE INDEX IF NOT EXISTS rule_exec_log_rule_idx ON rule_execution_log(rule_id, executed_at DESC)`)
   await query(`CREATE INDEX IF NOT EXISTS rule_exec_log_user_idx ON rule_execution_log(user_id, executed_at DESC)`)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS ai_settings (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      provider VARCHAR(20) NOT NULL DEFAULT 'ollama',
+      api_key_encrypted TEXT,
+      base_url TEXT DEFAULT 'http://localhost:11434',
+      model VARCHAR(100) NOT NULL DEFAULT 'llama3',
+      system_prompt TEXT,
+      feature_summarize BOOLEAN NOT NULL DEFAULT true,
+      feature_reply_draft BOOLEAN NOT NULL DEFAULT true,
+      feature_improve BOOLEAN NOT NULL DEFAULT true,
+      feature_translate BOOLEAN NOT NULL DEFAULT true,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
 }
 
 export default pool

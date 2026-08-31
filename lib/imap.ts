@@ -147,10 +147,16 @@ export async function listMessages(
           : normalizeSubjectForThread(subject)
 
         // Parse optional headers and size fetched in batch (cast via unknown — imapflow dynamic fields)
+        // imapflow v1 returns headers as a Buffer (raw MIME bytes), not a Map
         const msgAny = msg as unknown as Record<string, unknown>
-        const hdrs = msgAny.headers as Map<string, string[]> | undefined
-        const listUnsub = hdrs?.get('list-unsubscribe')?.[0] ?? undefined
-        const xPriorityRaw = hdrs?.get('x-priority')?.[0]
+        const hdrBuf = msgAny.headers as Buffer | undefined
+        const hdrText = Buffer.isBuffer(hdrBuf) ? hdrBuf.toString('utf8') : ''
+        const getHeader = (name: string): string | undefined => {
+          const match = hdrText.match(new RegExp(`^${name}:\\s*(.+)`, 'im'))
+          return match?.[1]?.trim()
+        }
+        const listUnsub = getHeader('list-unsubscribe')
+        const xPriorityRaw = getHeader('x-priority')
         const xPriority = xPriorityRaw ? parseInt(xPriorityRaw.trim(), 10) || undefined : undefined
 
         messages.push({

@@ -136,7 +136,7 @@ export function UpdateBanner() {
 
       {/* ── Modale ─────────────────────────────────────────────────────────── */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogContent className="!max-w-[960px] w-[92vw] max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base">
               <Sparkles className="w-4 h-4 text-violet-500" />

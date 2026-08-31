@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   User, Palette, BookOpen, Bell, PenSquare,
-  Mail, FileSignature, ArrowLeft, ShieldCheck, Users, Filter, LayoutTemplate,
+  Mail, FileSignature, ArrowLeft, ShieldCheck, Users, Filter, LayoutTemplate, Bot,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: '/settings/templates',     label: 'Templates',     icon: LayoutTemplate },
   { href: '/settings/contacts',      label: 'Contacts',      icon: Users },
   { href: '/settings/rules',         label: 'Règles',        icon: Filter },
+  { href: '/settings/ai',            label: 'IA Copilot',    icon: Bot },
 ]
 
 export function SettingsSidebar({ isAdmin }: { isAdmin: boolean }) {

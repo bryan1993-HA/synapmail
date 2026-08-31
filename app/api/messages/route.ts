@@ -64,6 +64,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json(result)
   } catch (err) {
+    console.error('[/api/messages] IMAP error:', String(err))
     return NextResponse.json({ error: String(err), messages: [], total: 0 }, { status: 500 })
   }
 }

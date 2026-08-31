@@ -26,6 +26,7 @@ export function MailClient() {
   const [selectedThreadSubject, setSelectedThreadSubject] = useState<string>('')
   const [composeMode, setComposeMode] = useState<'compose' | 'reply' | 'replyAll' | 'forward' | null>(null)
   const [composeReplyTo, setComposeReplyTo] = useState<Message | null>(null)
+  const [aiReplyDraft, setAiReplyDraft] = useState<string | null>(null)
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
   const [showReadingPane, setShowReadingPane] = useState(false)
   const settingsPaneInitialized = useRef(false)
@@ -363,6 +364,7 @@ export function MailClient() {
               onReplyAll={handleReplyAll}
               onForward={handleForward}
               onMessageLoaded={handleMessageLoaded}
+              onAiReply={(draft) => setAiReplyDraft(draft)}
             />
           )}
         </div>
@@ -374,8 +376,9 @@ export function MailClient() {
           replyTo={composeReplyToProp}
           accountEmail={accountEmail}
           accountId={accountId}
-          onClose={() => { setComposeMode(null); setComposeReplyTo(null) }}
-          onSent={() => { setComposeMode(null); setComposeReplyTo(null) }}
+          initialBody={aiReplyDraft ?? undefined}
+          onClose={() => { setComposeMode(null); setComposeReplyTo(null); setAiReplyDraft(null) }}
+          onSent={() => { setComposeMode(null); setComposeReplyTo(null); setAiReplyDraft(null) }}
         />
       )}
 
