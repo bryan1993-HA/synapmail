@@ -11,6 +11,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.0] — 2026-09-01 — AI Copilot
+
+### Added — AI Copilot (multi-provider)
+- **Provider support** — Claude (Anthropic API), OpenAI-compatible endpoints, Ollama (local), Custom OpenAI-compatible base URL
+- **Settings → IA Copilot** — simplified 3-step configuration: provider selection, credentials, save & test; collapsible advanced settings (system prompt, feature toggles)
+- **Ollama auto-detection** — server-side scan of network interfaces derives gateway IPs dynamically; tests all candidates in parallel (`/api/ai/detect`)
+- **AIToolbar in ReadingPane** — TL;DR summary, AI reply draft, translate (FR/EN); "Bientôt disponible" badges for tasks and priority scoring
+- **AICompose in ComposeModal** — Améliorer button + tone selector (Formel/Décontracté/Assertif/Concis/Empathique)
+- **`lib/ai.ts`** — unified multi-provider abstraction: Claude messages API, OpenAI chat completions, Ollama `/api/chat`
+- **`ai_settings` DB table** — per-user provider config, encrypted API key, model, system prompt, feature flags
+
+### Fixed
+- **IMAP headers parsing** — imapflow v1 returns fetched headers as a `Buffer`, not a `Map`; calling `.get()` caused `TypeError` → 500 on all `/api/messages` requests; fixed by parsing Buffer as UTF-8 text with regex extraction
+
+---
+
 ## [2026-08-31] — V2 complete: security, read receipts, contacts, rules, templates
 
 ### Added — Security (t19, t20)

@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Mail, Paperclip, Download, X, FileText, Image as ImageIcon, ReplyAll, MailX, CheckCircle2, AlertCircle, ShieldCheck, ShieldAlert, ShieldX, Filter } from 'lucide-react'
+import { AIToolbar } from '@/components/ai/AIToolbar'
 import useSWR from 'swr'
 import type { Message } from '@/types/email'
 import type { Attachment } from '@/types/email'
@@ -709,9 +710,10 @@ interface Props {
   onReplyAll?: (msg: Message) => void
   onForward?: (msg: Message) => void
   onMessageLoaded?: (msg: Message) => void
+  onAiReply?: (draft: string) => void
 }
 
-export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onReplyAll, onForward, onMessageLoaded }: Props) {
+export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onReplyAll, onForward, onMessageLoaded, onAiReply }: Props) {
   const t = useTranslations('mail')
   const [isStarred, setIsStarred] = useState<boolean | null>(null)
 
@@ -903,6 +905,15 @@ export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onReply
           <MoreHorizontal className="w-3.5 h-3.5" />
         </Button>
       </div>
+
+      {/* AI Toolbar */}
+      <AIToolbar
+        message={message}
+        onReplyWithAI={(draft) => {
+          onAiReply?.(draft)
+          onReply?.(message)
+        }}
+      />
 
       {/* Security banner */}
       <SecurityBanner message={message} />

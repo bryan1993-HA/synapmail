@@ -22,6 +22,7 @@ import type { Signature } from '@/types/account'
 import type { Attachment } from '@/types/email'
 import type { ComposeTemplate } from '@/types/template'
 import { EmailTokenInput } from './EmailTokenInput'
+import { AICompose } from '@/components/ai/AICompose'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -51,6 +52,7 @@ interface ComposeModalProps {
   }
   accountEmail: string
   accountId: string
+  initialBody?: string
   onClose: () => void
   onSent: () => void
 }
@@ -87,7 +89,7 @@ function Separator() {
   return <div className="w-px h-4 bg-border mx-0.5 shrink-0" />
 }
 
-export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, onSent }: ComposeModalProps) {
+export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBody, onClose, onSent }: ComposeModalProps) {
   const [toTokens, setToTokens] = useState<string[]>(() => {
     if ((mode === 'reply' || mode === 'replyAll') && replyTo) return [replyTo.from.address]
     return []
@@ -121,7 +123,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
   const [selectedSigId, setSelectedSigId] = useState<string | null>(null)
   const [sigApplied, setSigApplied] = useState(false)
   const [draftRestored, setDraftRestored] = useState(false)
-  const [pendingDraftContent, setPendingDraftContent] = useState<string | null>(null)
+  const [pendingDraftContent, setPendingDraftContent] = useState<string | null>(initialBody ?? null)
   const [showSigDropdown, setShowSigDropdown] = useState(false)
   const sigDropdownRef = useRef<HTMLDivElement>(null)
   const [requestReadReceipt, setRequestReadReceipt] = useState(false)
@@ -878,6 +880,18 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, onClose, 
           >
             <BookmarkPlus className="w-4 h-4" />
           </button>
+
+          {editor && (
+            <AICompose
+              getContent={() => editor.getHTML()}
+              onResult={(text) => {
+                const sig = selectedSigId ? signatures.find(s => s.id === selectedSigId) : null
+                const newContent = sig ? `<p>${text}</p><p>-- </p>${sig.contentHtml}` : `<p>${text}</p>`
+                editor.commands.setContent(newContent)
+              }}
+              onError={(msg) => setError(msg)}
+            />
+          )}
 
           <div className="flex-1" />
 
