@@ -90,14 +90,14 @@
 
 ## Screenshots
 
-<!-- Replace these placeholders with actual screenshots committed to docs/screenshots/ -->
-<!-- Example: ![Inbox](https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/inbox.png) -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/inbox.png" alt="Inbox — three-column layout with message list" width="100%"/>
+</p>
 
-| Inbox | Compose | Settings |
-|-------|---------|----------|
-| ![Inbox](https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/inbox.png) | ![Compose](https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/compose.png) | ![Settings](https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/settings.png) |
-
-> Screenshots update with each release. To contribute screenshots, see [`docs/screenshots/`](docs/screenshots/).
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/compose.png" alt="Compose modal with rich editor" width="49%"/>
+  <img src="https://raw.githubusercontent.com/bryan1993-HA/synapmail/main/docs/screenshots/settings.png" alt="Settings panel" width="49%"/>
+</p>
 
 ---
 
