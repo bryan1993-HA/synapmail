@@ -57,6 +57,9 @@ Quick navigation reference for every file and feature.
 | Change middleware | `middleware.ts` |
 | Change global styles | `app/globals.css` |
 | Change Docker config | `/mnt/stockage/docker/synapmail/` |
+| Regenerate README screenshots | `node scripts/gen-screenshots.mjs` (requires Docker) |
+| Add/edit CI pipeline | `.github/workflows/ci.yml` |
+| Change Docker build/publish | `.github/workflows/docker.yml` |
 | Change scheduler boot | `instrumentation.ts` |
 
 ---
@@ -68,9 +71,11 @@ Quick navigation reference for every file and feature.
 │
 ├── CLAUDE.md              ← AI context (read first)
 ├── PROJECT_MAP.md         ← This file
-├── README.md              ← GitHub public readme
+├── README.md              ← GitHub public readme (inline screenshots, badges, ghcr.io install)
 ├── CHANGELOG.md           ← Release history
-├── CONTRIBUTING.md        ← How to contribute
+├── CONTRIBUTING.md        ← How to contribute (CI, branch protection, screenshots)
+├── CODE_OF_CONDUCT.md     ← Contributor Covenant v2.1
+├── SECURITY.md            ← Vulnerability reporting policy
 ├── VALIDATE.md            ← Manual test checklist
 ├── LICENSE                ← MIT
 ├── .env.example           ← Env template (no secrets)
@@ -79,6 +84,28 @@ Quick navigation reference for every file and feature.
 ├── next.config.mjs        ← Next.js + withNextIntl
 ├── tailwind.config.ts
 ├── tsconfig.json
+│
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml              ← ESLint + CodeQL on every PR / push to main
+│   │   ├── docker.yml          ← Build multi-arch image + push to ghcr.io on push/tag
+│   │   └── release.yml         ← Auto-generate GitHub Release from conventional commits on tag
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.yml      ← Structured bug report form
+│   │   ├── feature_request.yml ← Feature suggestion form
+│   │   └── config.yml          ← Disable blank issues; link to security advisory + discussions
+│   └── pull_request_template.md← PR checklist (conventions, i18n, build, lint, no secrets)
+│
+├── docs/
+│   └── screenshots/            ← README images (generated via scripts/gen-screenshots.mjs)
+│       ├── inbox.png
+│       ├── compose.png
+│       ├── settings.png
+│       ├── mobile.png
+│       └── README.md           ← ⚠️ Regeneration instructions (re-run after UI changes)
+│
+├── scripts/
+│   └── gen-screenshots.mjs     ← Playwright script: login + inject fictional data + capture
 │
 ├── public/
 │   ├── favicon.ico

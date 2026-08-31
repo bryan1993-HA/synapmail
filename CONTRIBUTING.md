@@ -4,7 +4,10 @@ Thank you for your interest in contributing to Synapmail!
 
 ## Code of Conduct
 
-Please be respectful and constructive in all interactions. We follow the standard open-source community norms — harassment and discrimination of any kind will not be tolerated.
+Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+TL;DR: be respectful, constructive, and welcoming to everyone.
+
+---
 
 ## How to Contribute
 
@@ -48,6 +51,25 @@ git checkout -b fix/some-bug
 
 Push your branch to your fork and open a PR against the `main` branch of `bryan1993-HA/synapmail`.
 
+> **Note:** `main` is protected — all changes must go through a PR. The CI pipeline (ESLint + CodeQL) runs automatically and must pass before a PR can be merged.
+
+---
+
+## CI Pipeline
+
+Every PR triggers two checks automatically via GitHub Actions:
+
+| Check | What it does |
+|-------|-------------|
+| **ESLint** | Lints all TypeScript/TSX files |
+| **CodeQL** | Static security analysis (security-extended ruleset) |
+
+Run ESLint locally before pushing to catch issues early:
+
+```bash
+npm run lint
+```
+
 ---
 
 ## Code Style
@@ -70,6 +92,20 @@ Every user-facing string must be translated. When you add or modify text:
 4. Use `getTranslations('namespace')` in server components
 
 Never hardcode user-visible strings in component files.
+
+---
+
+## Screenshots
+
+If your PR changes the **visual appearance** of the app (layout, colors, new components, redesign), regenerate the README screenshots before submitting:
+
+```bash
+node scripts/gen-screenshots.mjs
+git add docs/screenshots/
+git commit -m "docs: update screenshots"
+```
+
+See [`docs/screenshots/README.md`](docs/screenshots/README.md) for full instructions.
 
 ---
 
@@ -97,12 +133,13 @@ chore: upgrade imapflow to 1.8.0
 
 ---
 
-## Testing
+## Security
 
-Currently there are no automated tests. When adding complex logic (encryption, IMAP parsing, date calculations), please add comments explaining the expected behaviour so others can verify manually.
+Please **do not open public issues for security vulnerabilities**.
+Report them privately via [GitHub Security Advisories](https://github.com/bryan1993-HA/synapmail/security/advisories/new) or by email — see [SECURITY.md](SECURITY.md).
 
 ---
 
 ## Questions?
 
-Open a GitHub Issue or start a Discussion. We're happy to help.
+Start a [GitHub Discussion](https://github.com/bryan1993-HA/synapmail/discussions) — we're happy to help.

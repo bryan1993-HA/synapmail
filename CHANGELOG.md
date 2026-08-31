@@ -11,6 +11,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.1] — 2026-09-01 — GitHub repo quality
+
+### Added
+- **Community Standards** — `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1), `SECURITY.md` (vulnerability reporting policy, scope, self-hosting best practices)
+- **Issue templates** — structured YAML forms for bug reports and feature requests; blank issues disabled; link to private security advisory
+- **Pull request template** — checklist (conventions, translations, build, ESLint, no secrets)
+- **CI workflow** (`.github/workflows/ci.yml`) — ESLint + CodeQL (security-extended) run automatically on every PR and push to `main`
+- **Docker workflow** (`.github/workflows/docker.yml`) — multi-arch build (`linux/amd64` + `linux/arm64`) pushed to `ghcr.io/bryan1993-ha/synapmail` on every push to `main` and on version tags; GHA layer cache
+- **`docker-compose.yml`** — now pulls `ghcr.io/bryan1993-ha/synapmail:latest` by default; `build: .` kept as commented fallback for contributors
+- **Branch protection** on `main` — PRs required; ESLint status check must pass before merge
+- **GitHub Discussions** enabled
+- **Topics** added to repo: `email-client`, `self-hosted`, `nextjs`, `imap`, `docker`, `typescript`, `ai`, `open-source`
+- **README screenshots** — inline full-width images generated via Playwright with fictional data; `scripts/gen-screenshots.mjs` script for future regeneration
+- **CI/Docker badges** added to README header
+
+---
+
 ## [1.2.0] — 2026-09-01 — AI Copilot
 
 ### Added — AI Copilot (multi-provider)
