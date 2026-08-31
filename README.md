@@ -21,6 +21,7 @@
 
 ### Email client
 - **Three-column layout** — Sidebar / Message list / Reading pane, fully responsive (mobile + tablet + desktop)
+- **Collapsible sidebar** — Icon-only mode (w-14 ↔ w-64), resizable columns via drag handle, persisted in localStorage
 - **Thread view** — Conversation grouping by normalized subject (Gmail-style)
 - **Multi-account** — Connect any number of IMAP/SMTP mailboxes; folder list updates instantly per account
 - **Account setup wizard** — Auto-configures Gmail, Outlook, Yahoo, iCloud, Proton Mail, OVH/Orange/Free and custom servers; detects provider from email domain
@@ -40,25 +41,47 @@
 - **Reply / Reply All / Forward**
 - **CC and BCC** — Toggle fields individually
 - **Forward with attachments** — Original attachments pre-listed as removable chips; re-fetched from IMAP server-side and sent
+- **Contact autocomplete** — Addresses auto-extracted from sent/received emails; typeahead in To/Cc/Bcc fields
 - **Email signatures** — Per-account rich-text signatures with switcher; auto-insert on compose
+- **Compose templates** — Save and reuse email templates with `{{variable}}` placeholders; resolved via inline form before sending
 - **Draft auto-save** — Compose window auto-saves to localStorage every 3 s; restored on next open with "Brouillon restauré" badge
+- **Scheduled send** — Pick a date and time to send later; emails queued in DB and sent by a background worker even without an active user session
+- **Undo send** — Configurable countdown (disabled / 5 s / 10 s / 30 s); "Sending in Xs… Cancel" toast; app fully usable during countdown
 
 ### Reading pane
 - **Inline attachment preview** — Images as lightbox thumbnails, PDFs in native browser viewer
 - **To / CC recipients** visible in message header
 - **Auto mark-as-read** on open
+- **Read receipts** — Optional per-email tracking combining a 1×1 pixel tracker and the MDN standard header (`Disposition-Notification-To`); eye icon + timestamp shown in Sent list when opened
+
+### Security & privacy
+- **Phishing detection** — Parses `Authentication-Results` header (SPF / DKIM / DMARC); detects display-name spoofing for 30+ brands; shows a color-coded security banner (green / orange / red) and highlights the sender address in red when suspicious
+- **Lookalike domain detection** — Levenshtein distance against known brand domains (amaz0n.com, arnazon.com…); flags visually similar domains
+- **Deceptive link detection** — Parses email HTML before rendering; warns when visible text says one domain but the href points to another
+- **Dangerous attachment warning** — Badges `.exe`, `.scr`, `.vbs`, `.bat`, `.js`, `.jar`, `.ps1` attachments with a red warning
+- **Urgency keyword detection** — Highlights subjects containing words like "URGENT", "suspended account", "immediate refund"
+- **Encrypted credentials** — Email passwords AES-256-GCM encrypted at rest
+
+### Productivity & automation
+- **Email rules engine** — Full Gmail/Outlook-style filter system: multi-condition rules (from, to, subject, body, size, date, List-Unsubscribe, X-Priority), actions (move, mark_read, star, delete, forward), AND/OR logic, drag-and-drop priority, auto-run every 5 min, "create from message" shortcut, JSON import/export, Sieve export, per-rule execution stats
+- **Scheduled emails view** — Clock icon with badge in toolbar; popover lists pending scheduled emails with per-item cancel
+- **Contact management** — Contacts auto-extracted from emails (one per unique message, noreply-filtered); searchable list in Settings → Contacts; can be edited or deleted
 
 ### Notifications & real-time
 - **Desktop notifications** — Browser Notification API; click opens the message directly in the app
-- **Server-Sent Events** — Real-time new mail polling (30 s per account)
+- **Server-Sent Events** — Real-time new mail polling (30 s per account); notifies scheduled emails sent
+- **MDN toast** — 30-second toast when a read-receipt response (MDN email) is received for a tracked sent message
 
 ### Settings & admin
+- **Full settings UI** — Sidebar-nav settings with 8 pages: Profile, Appearance, Reading, Notifications, Composition, Email Accounts, Signatures, Rules, Templates, Contacts
+- **Appearance** — Dark / Light / System theme, language (EN/FR), persisted server-side and applied on load
+- **Reading** — Reading pane on/off default
+- **Notifications** — Enable/disable desktop notifications
+- **Composition** — Undo send delay configuration
 - **User profile** — Name and password change
-- **Dark / Light / System theme**
 - **Full i18n** — English and French built-in, easy to extend
 - **Admin panel** — User management (create, role toggle, delete)
 - **Microsoft OAuth2** — Connect Outlook/Live/Hotmail via XOAUTH2 (no password stored)
-- **Encrypted credentials** — Email passwords AES-256-GCM encrypted at rest
 
 ---
 
@@ -68,46 +91,85 @@
 
 ---
 
-## Quick Start (Docker)
+## Installation
 
-### 1. Clone the repository
+Three supported methods — choose the one that fits your setup.
+
+---
+
+### Option A — Docker Compose _(recommended)_
+
+> **Requires**: Docker + Docker Compose. Includes PostgreSQL — nothing else needed.
 
 ```bash
 git clone https://github.com/bryan1993-HA/synapmail.git
 cd synapmail
+cp .env.example .env
 ```
 
-### 2. Create Docker configuration
-
-```bash
-mkdir -p /path/to/docker/synapmail
-cp .env.example /path/to/docker/synapmail/.env
-```
-
-### 3. Configure environment
-
-Edit `/path/to/docker/synapmail/.env`:
+Edit `.env`:
 
 ```env
 NEXTAUTH_URL=https://mail.yourdomain.com
 NEXTAUTH_SECRET=$(openssl rand -base64 32)
-DATABASE_URL=postgresql://synapmail_user:password@postgres:5432/synapmail
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 NEXT_PUBLIC_APP_URL=https://mail.yourdomain.com
-REGISTRATION_ENABLED=true
-```
 
-### 4. Start with Docker Compose
+# PostgreSQL password — must match DATABASE_URL
+POSTGRES_PASSWORD=a-strong-password
+DATABASE_URL=postgresql://synapmail_user:a-strong-password@postgres:5432/synapmail
+```
 
 ```bash
-docker compose -f /path/to/docker/synapmail/docker-compose.yml up -d --build
+docker compose up -d --build
 ```
 
-The app will be available at `http://localhost:3500`.
+The app will be available at `http://localhost:3500`.  
+The database schema is created automatically on first boot.
 
-### 5. Create your admin account
+---
 
-With `REGISTRATION_ENABLED=true`, navigate to `/register` to create the first user. After setup, set `REGISTRATION_ENABLED=false` and restart.
+### Option B — Docker only (external PostgreSQL)
+
+> **Requires**: Docker. Use this if you already have a PostgreSQL instance (e.g. Supabase, Railway, or your own server).
+
+```bash
+git clone https://github.com/bryan1993-HA/synapmail.git
+cd synapmail
+cp .env.example .env
+```
+
+Edit `.env` — set `DATABASE_URL` to point to your existing PostgreSQL instance, then:
+
+```bash
+docker build -t synapmail .
+docker run -d --name synapmail -p 3500:3000 --env-file .env synapmail
+```
+
+---
+
+### Option C — Manual (Node.js)
+
+> **Requires**: Node.js 20+, an existing PostgreSQL instance.
+
+```bash
+git clone https://github.com/bryan1993-HA/synapmail.git
+cd synapmail
+npm install
+cp .env.example .env   # fill in your values
+npm run build
+npm start
+```
+
+The app will be available at `http://localhost:3000`.  
+Use a process manager like [PM2](https://pm2.keymetrics.io/) to keep it running.
+
+---
+
+### First login
+
+Once the app is running, navigate to `/register` to create your first admin account.  
+After setup, set `REGISTRATION_ENABLED=false` in `.env` and restart to prevent new sign-ups.
 
 ---
 
@@ -119,9 +181,10 @@ With `REGISTRATION_ENABLED=true`, navigate to `/register` to create the first us
 |----------|----------|-------------|
 | `NEXTAUTH_URL` | Yes | Full public URL (e.g. `https://mail.example.com`) |
 | `NEXTAUTH_SECRET` | Yes | Random secret for JWT — `openssl rand -base64 32` |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `DATABASE_URL` | Yes | PostgreSQL connection string — must use `postgres` as hostname |
 | `ENCRYPTION_KEY` | Yes | 32-byte hex key for email password encryption — `openssl rand -hex 32` |
 | `NEXT_PUBLIC_APP_URL` | Yes | Same as `NEXTAUTH_URL`, exposed to client |
+| `POSTGRES_PASSWORD` | Yes | Password for the PostgreSQL container (must match `DATABASE_URL`) |
 | `REGISTRATION_ENABLED` | No | `true` to allow new registrations (default: `true`) |
 
 ---
@@ -145,6 +208,10 @@ Shortcuts are inactive when an input field or the editor is focused.
 
 ## REST API
 
+All endpoints require authentication. Responses follow `{ data?, error? }` shape.
+
+### Accounts
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/accounts` | List email accounts |
@@ -152,21 +219,79 @@ Shortcuts are inactive when an input field or the editor is focused.
 | `PATCH` | `/api/accounts/[id]` | Update account |
 | `DELETE` | `/api/accounts/[id]` | Remove account |
 | `POST` | `/api/accounts/test` | Test IMAP + SMTP connection |
+
+### Messages
+
+| Method | Path | Description |
+|--------|------|-------------|
 | `GET` | `/api/messages?account=&folder=&page=&filter=` | List messages |
 | `GET` | `/api/messages/[id]?account=&folder=` | Get full message |
-| `PATCH` | `/api/messages/[id]?account=&folder=` | Mark read/unread or star |
-| `DELETE` | `/api/messages/[id]?account=&folder=` | Delete message |
+| `PATCH` | `/api/messages/[id]` | Mark read/unread or star |
+| `DELETE` | `/api/messages/[id]` | Delete message |
 | `PATCH` | `/api/messages/bulk` | Bulk mark read/unread or move |
 | `DELETE` | `/api/messages/bulk` | Bulk delete |
-| `GET` | `/api/messages/[id]/attachment/[partId]?account=&folder=&inline=` | Download or inline-preview attachment |
+| `GET` | `/api/messages/[id]/attachment/[partId]?inline=` | Download or inline-preview attachment |
+| `POST` | `/api/messages/[id]/mdn` | Register received MDN (read receipt response) |
+| `GET` | `/api/messages/search?q=&account=` | Full-text IMAP search |
+| `GET` | `/api/messages/thread?subject=&account=` | Fetch thread messages |
+
+### Folders & Send
+
+| Method | Path | Description |
+|--------|------|-------------|
 | `GET` | `/api/folders?account=` | List IMAP folders |
-| `POST` | `/api/send` | Send email (with optional forwarded attachments) |
-| `GET` | `/api/search?q=&account=` | Full-text IMAP search |
+| `POST` | `/api/messages/send` | Send email (supports scheduled + forwarded attachments) |
+
+### Scheduled emails
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/scheduled` | List pending scheduled emails |
+| `DELETE` | `/api/scheduled/[id]` | Cancel a scheduled email |
+
+### Contacts
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/contacts?account=&q=` | List / search contacts |
+| `PATCH` | `/api/contacts/[id]` | Update contact |
+| `DELETE` | `/api/contacts/[id]` | Delete contact |
+
+### Rules
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/rules?account=` | List rules |
+| `POST` | `/api/rules` | Create rule |
+| `PATCH` | `/api/rules/[id]` | Update rule |
+| `DELETE` | `/api/rules/[id]` | Delete rule |
+| `POST` | `/api/rules/[id]/test` | Test rule on a folder |
+| `POST` | `/api/rules/run` | Run all rules now |
+| `GET` | `/api/rules/export` | Export rules as JSON |
+| `POST` | `/api/rules/import` | Import rules from JSON |
+| `GET` | `/api/rules/sieve` | Export rules as Sieve script |
+
+### Templates
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/templates?account=` | List compose templates |
+| `POST` | `/api/templates` | Create template |
+| `PATCH` | `/api/templates/[id]` | Update template |
+| `DELETE` | `/api/templates/[id]` | Delete template |
+
+### Tracking & misc
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/track/[token]` | Pixel tracking endpoint (read receipt) |
+| `GET` | `/api/track/status?messageId=` | Get tracking status for a sent message |
+| `POST` | `/api/unsubscribe` | Handle List-Unsubscribe clicks |
+| `GET` | `/api/settings` | Get user settings |
+| `PATCH` | `/api/settings` | Update user settings |
 | `GET` | `/api/profile` | Get current user |
 | `PATCH` | `/api/profile` | Update name or password |
-| `GET` | `/api/stream` | Server-Sent Events — new mail |
-
-All endpoints require authentication. Responses follow `{ data?, error? }` shape.
+| `GET` | `/api/stream` | Server-Sent Events — new mail + scheduler events |
 
 ---
 

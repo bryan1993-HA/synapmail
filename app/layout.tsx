@@ -11,8 +11,11 @@ export const metadata: Metadata = {
   title: 'Synapmail',
   description: 'Self-hosted AI-powered email client',
   icons: {
-    icon: '/brand/png/synapmail-favicon@64.png',
-    apple: '/brand/png/synapmail-icone@512.png',
+    icon: [
+      { url: '/favicon.ico', type: 'image/x-icon', sizes: 'any' },
+      { url: '/brand/png/synapmail-favicon@64.png', type: 'image/png', sizes: '64x64' },
+    ],
+    apple: { url: '/brand/png/synapmail-icone@512.png', sizes: '512x512' },
   },
 }
 

@@ -1,9 +1,16 @@
+export interface AuthResults {
+  spf: 'pass' | 'fail' | 'none'
+  dkim: 'pass' | 'fail' | 'none'
+  dmarc: 'pass' | 'fail' | 'none'
+}
+
 export interface Message {
   uid: string
   messageId: string
   from: EmailAddress
   to: EmailAddress[]
   cc?: EmailAddress[]
+  replyTo?: EmailAddress
   subject: string
   date: string
   preview: string
@@ -17,6 +24,17 @@ export interface Message {
   bodyHtml?: string
   bodyPlain?: string
   attachments?: Attachment[]
+  listUnsubscribe?: string
+  authResults?: AuthResults
+  dispositionNotificationTo?: string
+  size?: number       // message size in bytes (from IMAP)
+  xPriority?: number  // X-Priority header value (1=highest, 5=lowest)
+}
+
+export interface ReadReceipt {
+  opened: boolean
+  openedAt: string | null
+  openCount: number
 }
 
 export interface EmailAddress {

@@ -4,7 +4,7 @@ import { useTheme } from 'next-themes'
 import { Sun, Moon, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({ className, collapsed }: { className?: string; collapsed?: boolean }) {
   const { theme, setTheme } = useTheme()
 
   const cycle = () => {
@@ -21,12 +21,13 @@ export function ThemeToggle({ className }: { className?: string }) {
       onClick={cycle}
       title={`Thème : ${label}`}
       className={cn(
-        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-zinc-200 hover:bg-white/8 transition-all w-full',
+        'flex items-center rounded-lg text-sm text-zinc-500 hover:text-zinc-200 hover:bg-white/8 transition-all w-full',
+        collapsed ? 'justify-center py-2' : 'gap-3 px-3 py-2',
         className
       )}
     >
       <Icon className="w-4 h-4 shrink-0" />
-      <span>{label}</span>
+      {!collapsed && <span>{label}</span>}
     </button>
   )
 }

@@ -21,4 +21,4 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 USER nextjs
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "--max-old-space-size=768", "server.js"]

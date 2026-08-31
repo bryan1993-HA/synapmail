@@ -26,6 +26,7 @@ export interface SendMailOptions {
   text?: string
   inReplyTo?: string
   references?: string
+  dispositionNotificationTo?: string
   attachments?: Array<{
     filename: string
     content: Buffer | string
@@ -52,7 +53,7 @@ async function getSmtpAuth(config: SmtpConfig) {
   return { user: config.username, pass: decrypt(config.passwordEncrypted) }
 }
 
-export async function sendMail(config: SmtpConfig, options: SendMailOptions): Promise<void> {
+export async function sendMail(config: SmtpConfig, options: SendMailOptions): Promise<{ messageId: string }> {
   const auth = await getSmtpAuth(config)
   const transporter = nodemailer.createTransport({
     host: config.smtpHost,
@@ -62,7 +63,7 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
   })
 
   await transporter.verify()
-  await transporter.sendMail({
+  const info = await transporter.sendMail({
     from: options.from,
     to: options.to.join(', '),
     cc: options.cc?.join(', '),
@@ -73,7 +74,11 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
     inReplyTo: options.inReplyTo,
     references: options.references,
     attachments: options.attachments,
+    headers: options.dispositionNotificationTo
+      ? { 'Disposition-Notification-To': options.dispositionNotificationTo }
+      : undefined,
   })
+  return { messageId: info.messageId }
 }
 
 export async function verifySmtp(config: SmtpConfig): Promise<boolean> {

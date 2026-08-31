@@ -33,6 +33,7 @@
     "starred": "Suivis",
     "allMail": "Tous les messages",
     "compose": "Nouveau message",
+    "templates": "Templates",
     "settings": "Paramètres",
     "noMessages": "Aucun message",
     "noMessagesDesc": "Votre boîte de réception est vide",
@@ -55,7 +56,13 @@
     "noSubject": "(sans objet)",
     "unread": "Non lus",
     "all": "Tous",
-    "filter": "Filtrer"
+    "filter": "Filtrer",
+    "unsubscribe": "Se désabonner",
+    "unsubscribeBanner": "Cet email provient d'une liste de diffusion.",
+    "unsubscribeConfirm": "Confirmer le désabonnement ?",
+    "unsubscribeConfirmDesc": "Vous ne recevrez plus d'emails de cette liste.",
+    "unsubscribeDone": "Désabonnement effectué",
+    "unsubscribeError": "Erreur lors du désabonnement"
   },
   "compose": {
     "newMessage": "Nouveau message",
@@ -67,10 +74,43 @@
     "addBcc": "Ajouter un CCI",
     "send": "Envoyer",
     "sending": "Envoi en cours...",
+    "schedule": "Programmer",
+    "scheduling": "Programmation…",
+    "sendLater": "Envoyer plus tard",
+    "cancelSchedule": "Annuler la programmation",
     "discard": "Annuler",
     "attach": "Joindre un fichier",
     "signature": "Signature",
-    "from": "De"
+    "from": "De",
+    "insertTemplate": "Insérer un template",
+    "saveAsTemplate": "Enregistrer comme template",
+    "templateName": "Nom du template",
+    "fillVariables": "Remplir les variables",
+    "noTemplates": "Aucun template",
+    "insert": "Insérer"
+  },
+  "templates": {
+    "title": "Templates",
+    "add": "Nouveau template",
+    "name": "Nom du template",
+    "subject": "Préfixe de sujet",
+    "content": "Contenu",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "variables": "Variables détectées",
+    "noTemplates": "Aucun template"
+  },
+  "scheduled": {
+    "title": "Envois programmés",
+    "empty": "Aucun envoi programmé",
+    "scheduledFor": "Prévu le",
+    "cancel": "Annuler l'envoi",
+    "cancelConfirm": "Annuler cet envoi programmé ?",
+    "status": {
+      "pending": "En attente",
+      "sent": "Envoyé",
+      "failed": "Échec"
+    }
   },
   "settings": {
     "title": "Paramètres",
@@ -125,6 +165,15 @@
       "dark": "Sombre",
       "system": "Système",
       "language": "Langue"
+    },
+    "rules": {
+      "title": "Règles & Filtres",
+      "subtitle": "Automatisez le tri et le traitement de vos emails entrants.",
+      "newRule": "Nouvelle règle",
+      "runNow": "Exécuter maintenant",
+      "noRules": "Aucune règle configurée",
+      "noRulesDesc": "Les règles s'appliquent automatiquement aux nouveaux emails.",
+      "templates": "Démarrage rapide — Modèles"
     }
   },
   "admin": {
@@ -141,6 +190,60 @@
       "actions": "Actions",
       "delete": "Supprimer",
       "confirmDelete": "Êtes-vous sûr de vouloir supprimer cet utilisateur ?"
+    }
+  },
+  "contacts": {
+    "title": "Contacts",
+    "add": "Ajouter",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "star": "Favori",
+    "unstar": "Retirer des favoris",
+    "name": "Nom",
+    "email": "Email",
+    "notes": "Notes",
+    "frequency": "Messages",
+    "lastContact": "Dernier contact",
+    "manual": "Manuel",
+    "dialogue": "Dialogue",
+    "oneshot": "One-shot",
+    "clean": "Nettoyer",
+    "cleanConfirm": "Supprimer les contacts one-shot ?",
+    "cleaned": "contacts supprimés",
+    "noContacts": "Aucun contact",
+    "noContactsDesc": "Les contacts apparaissent automatiquement à partir de vos emails envoyés et reçus.",
+    "noResults": "Aucun contact pour",
+    "sort": {
+      "score": "Pertinence",
+      "frequency": "Fréquence",
+      "recent": "Récents",
+      "name": "Nom A→Z"
+    },
+    "placeholder": "destinataire@exemple.com",
+    "alreadyAdded": "Ajouté"
+  },
+  "updates": {
+    "available": "Synapmail {version} est disponible",
+    "moreInfo": "Plus d'informations",
+    "dismiss": "Ignorer",
+    "modalTitle": "Mise à jour disponible — {version}",
+    "tabReleases": "Nouveautés",
+    "tabHowTo": "Comment mettre à jour",
+    "noNotes": "Aucune note de version.",
+    "howto": {
+      "safeNote": "La mise à jour n'efface aucune donnée. La base PostgreSQL et les fichiers de configuration sont conservés. Seul le conteneur applicatif est reconstruit.",
+      "from": "Version actuelle :",
+      "to": "Nouvelle version :",
+      "step1Title": "Sauvegarder (optionnel mais recommandé)",
+      "step1Desc": "Faites un snapshot de votre base PostgreSQL avant de mettre à jour.",
+      "step2Title": "Récupérer le nouveau code",
+      "step2Desc": "Depuis le dossier du projet Synapmail :",
+      "step3Title": "Reconstruire et redémarrer le conteneur",
+      "step3Desc": "Docker reconstruit l'image avec le nouveau code, les données sont préservées.",
+      "step4Title": "Vérifier que tout démarre correctement",
+      "step4Desc": "Attendez de voir \"Ready\" dans les logs. Ctrl+C pour quitter le suivi.",
+      "dataTitle": "Vos données sont en sécurité.",
+      "dataDesc": "La base de données PostgreSQL est dans un volume Docker séparé — elle n'est jamais supprimée lors d'un rebuild."
     }
   },
   "common": {
