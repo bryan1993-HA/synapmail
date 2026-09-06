@@ -5,14 +5,30 @@ import { listFolders } from '@/lib/imap'
 
 export const dynamic = 'force-dynamic'
 
-function detectSpecial(path: string, name: string): 'inbox' | 'sent' | 'drafts' | 'spam' | 'trash' | null {
-  const p = path.toLowerCase()
-  const n = name.toLowerCase()
+type Special = 'inbox' | 'sent' | 'drafts' | 'spam' | 'trash' | null
+
+// IMAP SPECIAL-USE attributes (RFC 6154) — language-independent, most reliable.
+const SPECIAL_USE: Record<string, Exclude<Special, null>> = {
+  '\\Sent': 'sent',
+  '\\Drafts': 'drafts',
+  '\\Junk': 'spam',
+  '\\Trash': 'trash',
+}
+
+function detectSpecial(folder: { path: string; name: string; flags: string[]; specialUse?: string }): Special {
+  // 1) Prefer the IMAP special-use flag (works regardless of the mailbox language).
+  const su = folder.specialUse || folder.flags.find(f => SPECIAL_USE[f])
+  if (su && SPECIAL_USE[su]) return SPECIAL_USE[su]
+
+  // 2) Fall back to name/path matching, including French aliases.
+  const p = folder.path.toLowerCase()
+  const n = folder.name.toLowerCase()
+  const has = (...kw: string[]) => kw.some(k => p.includes(k) || n.includes(k))
   if (p === 'inbox' || n === 'inbox') return 'inbox'
-  if (p.includes('sent') || n.includes('sent')) return 'sent'
-  if (p.includes('draft') || n.includes('draft')) return 'drafts'
-  if (p.includes('junk') || n.includes('junk') || p.includes('spam') || n.includes('spam')) return 'spam'
-  if (p.includes('deleted') || n.includes('deleted') || p.includes('trash') || n.includes('trash')) return 'trash'
+  if (has('sent', 'envoyé', 'envoyes', 'envoyés')) return 'sent'
+  if (has('draft', 'brouillon')) return 'drafts'
+  if (has('junk', 'spam', 'pourriel', 'indésirable', 'indesirable')) return 'spam'
+  if (has('trash', 'deleted', 'corbeille')) return 'trash'
   return null
 }
 
@@ -72,11 +88,13 @@ export async function GET(req: Request) {
     }
 
     const normalized = folders
-      .filter(f => !isSystemFolder(f.path, f.name))
+      // Skip system folders and non-selectable containers (e.g. Gmail's "[Gmail]"
+      // parent, which carries \Noselect and errors when opened).
+      .filter(f => !isSystemFolder(f.path, f.name) && !f.flags.includes('\\Noselect'))
       .map(f => ({
         name: f.name,
         path: f.path,
-        special: detectSpecial(f.path, f.name),
+        special: detectSpecial(f),
       }))
 
     // Sort: special folders first (in order), then alphabetical

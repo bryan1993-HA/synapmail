@@ -54,6 +54,7 @@ export interface Folder {
   path: string
   delimiter: string
   flags: string[]
+  specialUse?: string
   unread?: number
   total?: number
   children?: Folder[]

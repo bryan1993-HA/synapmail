@@ -450,6 +450,7 @@ export async function listFolders(account: AccountConfig): Promise<Folder[]> {
       path: f.path,
       delimiter: f.delimiter ?? '/',
       flags: Array.from(f.flags ?? []),
+      specialUse: f.specialUse ?? undefined,
     }))
   } finally {
     await client.logout()
