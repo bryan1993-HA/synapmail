@@ -100,6 +100,12 @@ export async function createClient(account: AccountConfig): Promise<ImapFlow> {
     secure: account.imapSecure,
     auth: authOpts,
     logger: false,
+    // Fail fast on connection issues instead of hanging on imapflow's long
+    // defaults (~90s to connect). A slow/unreachable IMAP host or a bad greeting
+    // now errors within ~10s, so the API returns an error quickly rather than
+    // holding the request (and an IMAP connection) open for a long time.
+    connectionTimeout: 10000,
+    greetingTimeout: 8000,
   })
   await client.connect()
   return client
