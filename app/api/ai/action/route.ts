@@ -6,7 +6,15 @@ import { NextRequest, NextResponse } from 'next/server'
 type AIAction = 'summarize' | 'reply' | 'improve' | 'tone' | 'translate'
 
 function buildPrompt(action: AIAction, content: string, options: { tone?: string; targetLang?: string; context?: string }): string {
-  const plain = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  // Strip non-visible blocks first: a plain tag-strip keeps the *contents* of
+  // <style>/<script>/<head>, which leaked CSS/JS into the prompt (and the result).
+  const plain = content
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<head[\s\S]*?<\/head>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 
   switch (action) {
     case 'summarize':
