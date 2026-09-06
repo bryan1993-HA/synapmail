@@ -118,19 +118,24 @@ export async function listMessages(
     const mailbox = await client.mailboxOpen(folder)
     const total = mailbox.exists
 
-    let searchQuery: Parameters<typeof client.search>[0]
-    if (filter === 'unread') {
-      searchQuery = { seen: false }
-    } else if (filter === 'starred') {
-      searchQuery = { flagged: true }
+    // Sequence numbers for the requested page, newest first.
+    // For the default "all" view we derive the range directly from
+    // mailbox.exists instead of running SEARCH ALL, which returns every
+    // sequence number in the mailbox on each page load and is very slow on
+    // large folders (100k+ messages). The resulting page is identical.
+    let pageUids: number[]
+    if (filter === 'all') {
+      const end = total - (page - 1) * perPage
+      const start = Math.max(1, end - perPage + 1)
+      pageUids = []
+      for (let seq = end; seq >= start; seq--) pageUids.push(seq)
     } else {
-      searchQuery = { all: true }
+      const searchQuery: Parameters<typeof client.search>[0] =
+        filter === 'unread' ? { seen: false } : { flagged: true }
+      const searchResult = await client.search(searchQuery)
+      const allUids = Array.isArray(searchResult) ? searchResult : []
+      pageUids = [...allUids].reverse().slice((page - 1) * perPage, page * perPage)
     }
-
-    const searchResult = await client.search(searchQuery)
-    const allUids = Array.isArray(searchResult) ? searchResult : []
-    const reversedUids = [...allUids].reverse()
-    const pageUids = reversedUids.slice((page - 1) * perPage, page * perPage)
 
     const messages: Message[] = []
     if (pageUids.length > 0) {
