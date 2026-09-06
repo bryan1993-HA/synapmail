@@ -37,14 +37,6 @@ const SPECIAL_LABELS: Record<NonNullable<SpecialKey>, string> = {
 
 type FolderItem = { name: string; path: string; special: SpecialKey; unreadCount?: number }
 
-const FALLBACK_FOLDERS: FolderItem[] = [
-  { path: 'INBOX', name: 'INBOX', special: 'inbox', unreadCount: 0 },
-  { path: 'Sent Items', name: 'Sent Items', special: 'sent', unreadCount: 0 },
-  { path: 'Drafts', name: 'Drafts', special: 'drafts', unreadCount: 0 },
-  { path: 'Junk Email', name: 'Junk Email', special: 'spam', unreadCount: 0 },
-  { path: 'Deleted Items', name: 'Deleted Items', special: 'trash', unreadCount: 0 },
-]
-
 const dispatchCompose = () => window.dispatchEvent(new CustomEvent('synapmail:compose'))
 
 const ACCOUNT_COLORS = ['bg-blue-500', 'bg-violet-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
@@ -92,13 +84,17 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
   const resolvedAccountId = activeAccount?.id ?? null
   const accountColorIdx = activeAccount ? accounts.indexOf(activeAccount) % ACCOUNT_COLORS.length : 0
 
-  const { data: foldersData } = useSWR<{ data: FolderItem[] }>(
+  const { data: foldersData, error: foldersError } = useSWR<{ data: FolderItem[] }>(
     resolvedAccountId ? `/api/folders?account=${resolvedAccountId}` : '/api/folders',
     fetcher,
     { revalidateOnFocus: false }
   )
 
-  const folders: FolderItem[] = foldersData?.data?.length ? foldersData.data : FALLBACK_FOLDERS
+  // Only ever show the account's real folders. While they load, show a skeleton
+  // instead of hard-coded (Outlook-style) placeholders, which pointed at paths
+  // that don't exist on other providers (e.g. Gmail) and opened empty folders.
+  const folders: FolderItem[] = foldersData?.data ?? []
+  const foldersLoading = !foldersData && !foldersError
   const specialFolders = folders.filter(f => f.special)
   const customFolders = folders.filter(f => !f.special)
 
@@ -165,6 +161,9 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
 
         {/* Nav icons */}
         <nav className="flex-1 w-full px-1.5 space-y-0.5 overflow-y-auto">
+          {foldersLoading && [...Array(5)].map((_, i) => (
+            <div key={i} className="w-full h-9 rounded-lg bg-white/5 animate-pulse" />
+          ))}
           {specialFolders.map(folder => {
             const Icon = SPECIAL_ICONS[folder.special!] ?? Folder
             const label = SPECIAL_LABELS[folder.special!]
@@ -329,6 +328,9 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
 
       {/* Main folders */}
       <nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
+        {foldersLoading && [...Array(5)].map((_, i) => (
+          <div key={i} className="h-9 rounded-lg bg-white/5 animate-pulse" />
+        ))}
         {specialFolders.map(folder => {
           const Icon = SPECIAL_ICONS[folder.special!] ?? Folder
           const label = SPECIAL_LABELS[folder.special!]
