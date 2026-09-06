@@ -53,6 +53,34 @@ async function getSmtpAuth(config: SmtpConfig) {
   return { user: config.username, pass: decrypt(config.passwordEncrypted) }
 }
 
+// Wrap a bare HTML fragment (e.g. Tiptap output) in a complete document so the
+// message is not "HTML-only with no <html> tag" (SpamAssassin HTML_MIME_NO_HTML_TAG).
+function wrapHtmlDocument(html: string): string {
+  if (/<html[\s>]/i.test(html)) return html
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`
+}
+
+// Derive a reasonable text/plain version from HTML so the message is multipart
+// (MIME_HTML_ONLY otherwise). Not a full renderer — just readable fallback text.
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
 export async function sendMail(config: SmtpConfig, options: SendMailOptions): Promise<{ messageId: string }> {
   const auth = await getSmtpAuth(config)
   const transporter = nodemailer.createTransport({
@@ -62,6 +90,10 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
     auth,
   })
 
+  // Ensure a full HTML document + a text/plain alternative for deliverability.
+  const html = options.html ? wrapHtmlDocument(options.html) : undefined
+  const text = options.text ?? (options.html ? htmlToText(options.html) : undefined)
+
   await transporter.verify()
   const info = await transporter.sendMail({
     from: options.from,
@@ -69,8 +101,8 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
     cc: options.cc?.join(', '),
     bcc: options.bcc?.join(', '),
     subject: options.subject,
-    html: options.html,
-    text: options.text,
+    html,
+    text,
     inReplyTo: options.inReplyTo,
     references: options.references,
     attachments: options.attachments,
