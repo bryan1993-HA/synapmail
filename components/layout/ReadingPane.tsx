@@ -664,21 +664,39 @@ function EmailBody({ message }: { message: Message }) {
     const iframe = iframeRef.current
     const doc = iframe.contentDocument
     if (!doc) return
+    // <base target="_blank"> makes every link open in a new tab instead of
+    // navigating the iframe itself (which replaced the email with the link).
+    // Many emails are full HTML documents, so inject <base> into their existing
+    // <head> rather than wrapping (nesting a full doc drops the outer <base>).
+    const styleTag = `<style>* { box-sizing: border-box; } body { font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333; padding: 16px; margin: 0; } img { max-width: 100%; height: auto; }</style>`
+    const baseTag = `<base target="_blank">`
+    const raw = message.bodyHtml
+    let html: string
+    if (/<head[\s>]/i.test(raw)) {
+      html = raw.replace(/<head([^>]*)>/i, `<head$1>${baseTag}${styleTag}`)
+    } else if (/<html[^>]*>/i.test(raw)) {
+      html = raw.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${styleTag}</head>`)
+    } else {
+      html = `<html><head>${baseTag}${styleTag}</head><body>${raw}</body></html>`
+    }
     doc.open()
-    doc.write(
-      `<html><head><style>
-        * { box-sizing: border-box; }
-        body { font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333; padding: 16px; margin: 0; }
-        img { max-width: 100%; height: auto; }
-      </style></head><body>${message.bodyHtml}</body></html>`
-    )
+    doc.write(html)
     doc.close()
 
+    // Harden links against reverse tab-nabbing. Run after parse (onload/timeout)
+    // because a written full document is not always queryable synchronously.
+    const hardenLinks = () => {
+      try {
+        iframe.contentDocument?.querySelectorAll('a[href]').forEach(a => a.setAttribute('rel', 'noopener noreferrer'))
+      } catch { /* cross-origin guard */ }
+    }
     const resize = () => {
+      hardenLinks()
       if (iframe.contentDocument?.body) {
         iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'
       }
     }
+    hardenLinks()
     iframe.onload = resize
     setTimeout(resize, 100)
   }, [message.bodyHtml])
