@@ -2,10 +2,17 @@
 
 import { useTheme } from 'next-themes'
 import { Sun, Moon, Monitor } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 export function ThemeToggle({ className, collapsed }: { className?: string; collapsed?: boolean }) {
   const { theme, setTheme } = useTheme()
+  // next-themes has no theme value during SSR, so gate theme-dependent output on
+  // mount to keep the server and first client render identical (avoids a React
+  // hydration mismatch on the icon/label).
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  const current = mounted ? theme : undefined
 
   const cycle = () => {
     if (theme === 'light') setTheme('dark')
@@ -13,8 +20,8 @@ export function ThemeToggle({ className, collapsed }: { className?: string; coll
     else setTheme('light')
   }
 
-  const Icon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
-  const label = theme === 'light' ? 'Clair' : theme === 'dark' ? 'Sombre' : 'Système'
+  const Icon = current === 'light' ? Sun : current === 'dark' ? Moon : Monitor
+  const label = current === 'light' ? 'Clair' : current === 'dark' ? 'Sombre' : 'Système'
 
   return (
     <button
