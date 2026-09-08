@@ -105,7 +105,10 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
     setAccountOpen(false)
   }
 
-  const handleFolderClick = () => { onClose?.() }
+  const handleFolderClick = (path?: string) => {
+    if (path) setCurrentFolder(path)
+    onClose?.()
+  }
 
   const handleDragOver = (e: React.DragEvent, path: string) => {
     if (!e.dataTransfer.types.includes('application/synapmail')) return
@@ -181,7 +184,7 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
               <Link
                 key={folder.path}
                 href={`/mail?folder=${encodeURIComponent(folder.path)}`}
-                onClick={handleFolderClick}
+                onClick={() => handleFolderClick(folder.path)}
                 onDragOver={e => handleDragOver(e, folder.path)}
                 onDragLeave={handleDragLeave}
                 onDrop={e => handleDrop(e, folder.path)}
@@ -215,7 +218,7 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
                   <Link
                     key={folder.path}
                     href={`/mail?folder=${encodeURIComponent(folder.path)}`}
-                    onClick={handleFolderClick}
+                    onClick={() => handleFolderClick(folder.path)}
                     onDragOver={e => handleDragOver(e, folder.path)}
                     onDragLeave={handleDragLeave}
                     onDrop={e => handleDrop(e, folder.path)}
@@ -364,7 +367,7 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
             <Link
               key={folder.path}
               href={`/mail?folder=${encodeURIComponent(folder.path)}`}
-              onClick={handleFolderClick}
+              onClick={() => handleFolderClick(folder.path)}
               onDragOver={e => handleDragOver(e, folder.path)}
               onDragLeave={handleDragLeave}
               onDrop={e => handleDrop(e, folder.path)}
@@ -405,7 +408,7 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
                 <Link
                   key={folder.path}
                   href={`/mail?folder=${encodeURIComponent(folder.path)}`}
-                  onClick={handleFolderClick}
+                  onClick={() => handleFolderClick(folder.path)}
                   onDragOver={e => handleDragOver(e, folder.path)}
                   onDragLeave={handleDragLeave}
                   onDrop={e => handleDrop(e, folder.path)}
