@@ -219,7 +219,7 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
                 {result.action === 'summarize' && 'Résumé'}
                 {(result.action === 'translate_fr' || result.action === 'translate_en') && 'Traduction'}
               </p>
-              <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{result.text}</p>
+              <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap max-h-[30vh] sm:max-h-[45vh] overflow-y-auto break-words">{result.text}</p>
             </div>
           )}
 

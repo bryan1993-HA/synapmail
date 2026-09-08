@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import { decrypt } from './encrypt'
 import { refreshAccessToken } from './msOAuth'
 import { query } from './db'
+import { htmlToText, wrapHtmlDocument } from './html'
 
 interface SmtpConfig {
   id?: string
@@ -62,6 +63,11 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
     auth,
   })
 
+  // Ensure outgoing HTML is a full document (avoids SpamAssassin HTML_MIME_NO_HTML_TAG)
+  // and derive a text/plain fallback (avoids MIME_HTML_ONLY flag).
+  const finalHtml = options.html ? wrapHtmlDocument(options.html) : undefined
+  const finalText = options.text ?? (options.html ? htmlToText(options.html) : undefined)
+
   await transporter.verify()
   const info = await transporter.sendMail({
     from: options.from,
@@ -69,8 +75,8 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
     cc: options.cc?.join(', '),
     bcc: options.bcc?.join(', '),
     subject: options.subject,
-    html: options.html,
-    text: options.text,
+    html: finalHtml,
+    text: finalText,
     inReplyTo: options.inReplyTo,
     references: options.references,
     attachments: options.attachments,

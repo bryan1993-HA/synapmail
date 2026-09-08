@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
   Mail, Send, FileText, AlertTriangle, Trash2,
-  Settings, PenSquare, Folder, Archive, X, ChevronDown, ChevronLeft, ChevronRight,
+  Settings, PenSquare, Folder, Archive, X, ChevronDown, ChevronLeft, ChevronRight, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
@@ -36,14 +36,6 @@ const SPECIAL_LABELS: Record<NonNullable<SpecialKey>, string> = {
 }
 
 type FolderItem = { name: string; path: string; special: SpecialKey; unreadCount?: number }
-
-const FALLBACK_FOLDERS: FolderItem[] = [
-  { path: 'INBOX', name: 'INBOX', special: 'inbox', unreadCount: 0 },
-  { path: 'Sent Items', name: 'Sent Items', special: 'sent', unreadCount: 0 },
-  { path: 'Drafts', name: 'Drafts', special: 'drafts', unreadCount: 0 },
-  { path: 'Junk Email', name: 'Junk Email', special: 'spam', unreadCount: 0 },
-  { path: 'Deleted Items', name: 'Deleted Items', special: 'trash', unreadCount: 0 },
-]
 
 const dispatchCompose = () => window.dispatchEvent(new CustomEvent('synapmail:compose'))
 
@@ -93,13 +85,14 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
   const resolvedAccountId = activeAccount?.id ?? null
   const accountColorIdx = activeAccount ? accounts.indexOf(activeAccount) % ACCOUNT_COLORS.length : 0
 
-  const { data: foldersData } = useSWR<{ data: FolderItem[] }>(
+  const { data: foldersData, error: foldersError, mutate: mutateFolders } = useSWR<{ data: FolderItem[] }>(
     resolvedAccountId ? `/api/folders?account=${resolvedAccountId}` : '/api/folders',
     fetcher,
     { revalidateOnFocus: false }
   )
 
-  const folders: FolderItem[] = foldersData?.data?.length ? foldersData.data : FALLBACK_FOLDERS
+  const foldersLoading = !foldersData && !foldersError
+  const folders: FolderItem[] = foldersData?.data ?? []
   const specialFolders = folders.filter(f => f.special)
   const customFolders = folders.filter(f => !f.special)
 
@@ -166,7 +159,19 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
 
         {/* Nav icons */}
         <nav className="flex-1 w-full px-1.5 space-y-0.5 overflow-y-auto">
-          {specialFolders.map(folder => {
+          {foldersLoading && [1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="w-9 h-9 rounded-lg bg-muted/40 animate-pulse mx-auto" />
+          ))}
+          {foldersError && (
+            <button
+              onClick={() => mutateFolders()}
+              title="Réessayer"
+              className="flex items-center justify-center w-full h-9 rounded-lg text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          )}
+          {!foldersLoading && !foldersError && specialFolders.map(folder => {
             const Icon = SPECIAL_ICONS[folder.special!] ?? Folder
             const label = SPECIAL_LABELS[folder.special!]
             const isActive = pathname.startsWith('/mail') && currentFolder === folder.path
@@ -330,7 +335,26 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
 
       {/* Main folders */}
       <nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
-        {specialFolders.map(folder => {
+        {foldersLoading && [1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg">
+            <div className="w-4 h-4 rounded bg-muted/40 animate-pulse shrink-0" />
+            <div className="h-3 rounded bg-muted/40 animate-pulse flex-1" />
+          </div>
+        ))}
+        {foldersError && (
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <AlertTriangle className="w-5 h-5 text-destructive/60" />
+            <p className="text-xs text-muted-foreground">{t('foldersError')}</p>
+            <button
+              onClick={() => mutateFolders()}
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+            >
+              <RefreshCw className="w-3 h-3" />
+              {t('retry')}
+            </button>
+          </div>
+        )}
+        {!foldersLoading && !foldersError && specialFolders.map(folder => {
           const Icon = SPECIAL_ICONS[folder.special!] ?? Folder
           const label = SPECIAL_LABELS[folder.special!]
           const isActive = pathname.startsWith('/mail') && currentFolder === folder.path

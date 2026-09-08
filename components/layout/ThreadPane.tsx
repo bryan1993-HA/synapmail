@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { buildIframeHtml, hardenIframeLinks } from '@/lib/email-iframe'
 import { Reply, Forward, Trash2, ChevronDown, ChevronUp, Mail, Paperclip } from 'lucide-react'
 import useSWR from 'swr'
 import type { Message } from '@/types/email'
@@ -42,21 +43,16 @@ function EmailBody({ message }: { message: Message }) {
     const doc = iframe.contentDocument
     if (!doc) return
     doc.open()
-    doc.write(
-      `<html><head><style>
-        * { box-sizing: border-box; }
-        body { font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333; padding: 16px; margin: 0; }
-        img { max-width: 100%; height: auto; }
-      </style></head><body>${message.bodyHtml}</body></html>`
-    )
+    doc.write(buildIframeHtml(message.bodyHtml))
     doc.close()
+    hardenIframeLinks(iframe)
 
     const resize = () => {
       if (iframe.contentDocument?.body) {
         iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'
       }
     }
-    iframe.onload = resize
+    iframe.onload = () => { resize(); hardenIframeLinks(iframe) }
     setTimeout(resize, 150)
   }, [message.bodyHtml])
 

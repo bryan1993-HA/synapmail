@@ -8,6 +8,7 @@ import type { Message } from '@/types/email'
 import type { Attachment } from '@/types/email'
 import { Button } from '@/components/ui/button'
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { buildIframeHtml, hardenIframeLinks } from '@/lib/email-iframe'
 import { cn } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -665,21 +666,16 @@ function EmailBody({ message }: { message: Message }) {
     const doc = iframe.contentDocument
     if (!doc) return
     doc.open()
-    doc.write(
-      `<html><head><style>
-        * { box-sizing: border-box; }
-        body { font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333; padding: 16px; margin: 0; }
-        img { max-width: 100%; height: auto; }
-      </style></head><body>${message.bodyHtml}</body></html>`
-    )
+    doc.write(buildIframeHtml(message.bodyHtml))
     doc.close()
+    hardenIframeLinks(iframe)
 
     const resize = () => {
       if (iframe.contentDocument?.body) {
         iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'
       }
     }
-    iframe.onload = resize
+    iframe.onload = () => { resize(); hardenIframeLinks(iframe) }
     setTimeout(resize, 100)
   }, [message.bodyHtml])
 

@@ -60,6 +60,7 @@
     "unread": "Non lus",
     "all": "Tous",
     "filter": "Filtrer",
+    "foldersError": "Impossible de charger les dossiers",
     "unsubscribe": "Se désabonner",
     "unsubscribeBanner": "Cet email provient d'une liste de diffusion.",
     "unsubscribeConfirm": "Confirmer le désabonnement ?",

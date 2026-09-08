@@ -2,11 +2,13 @@ import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
 import { callAI, AIProvider, AISettings } from '@/lib/ai'
 import { NextRequest, NextResponse } from 'next/server'
+import { htmlToText } from '@/lib/html'
 
 type AIAction = 'summarize' | 'reply' | 'improve' | 'tone' | 'translate'
 
 function buildPrompt(action: AIAction, content: string, options: { tone?: string; targetLang?: string; context?: string }): string {
-  const plain = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  // Strip HTML fully (style/script/head blocks + all tags + entity decoding)
+  const plain = htmlToText(content)
 
   switch (action) {
     case 'summarize':

@@ -60,6 +60,7 @@
     "unread": "Unread",
     "all": "All",
     "filter": "Filter",
+    "foldersError": "Couldn't load folders",
     "unsubscribe": "Unsubscribe",
     "unsubscribeBanner": "This email is from a mailing list.",
     "unsubscribeConfirm": "Confirm unsubscribe?",

@@ -124,19 +124,25 @@ export async function listMessages(
     const mailbox = await client.mailboxOpen(folder)
     const total = mailbox.exists
 
-    let searchQuery: Parameters<typeof client.search>[0]
-    if (filter === 'unread') {
-      searchQuery = { seen: false }
-    } else if (filter === 'starred') {
-      searchQuery = { flagged: true }
+    // For "all" we derive the page range directly from mailbox.exists:
+    // sequence numbers are 1..N, with N being the newest message.
+    // This avoids SEARCH ALL which returns all N sequence numbers just to
+    // slice a small page — a significant win on large mailboxes.
+    // For filtered views (unread/starred) we still need SEARCH.
+    let pageSeqs: number[]
+    if (filter === 'all') {
+      const end = total - (page - 1) * perPage
+      const start = Math.max(1, end - perPage + 1)
+      pageSeqs = []
+      for (let seq = end; seq >= start; seq--) pageSeqs.push(seq)
     } else {
-      searchQuery = { all: true }
+      const criteria = filter === 'unread' ? { seen: false } : { flagged: true }
+      const raw = await client.search(criteria)
+      const allSeqs = Array.isArray(raw) ? raw : []
+      const reversed = [...allSeqs].reverse()
+      pageSeqs = reversed.slice((page - 1) * perPage, page * perPage) as number[]
     }
-
-    const searchResult = await client.search(searchQuery)
-    const allUids = Array.isArray(searchResult) ? searchResult : []
-    const reversedUids = [...allUids].reverse()
-    const pageUids = reversedUids.slice((page - 1) * perPage, page * perPage)
+    const pageUids = pageSeqs
 
     const messages: Message[] = []
     if (pageUids.length > 0) {
@@ -451,12 +457,16 @@ export async function listFolders(account: AccountConfig): Promise<Folder[]> {
   const client = await createClient(account)
   try {
     const list = await client.list()
-    return list.map(f => ({
-      name: f.name,
-      path: f.path,
-      delimiter: f.delimiter ?? '/',
-      flags: Array.from(f.flags ?? []),
-    }))
+    return list
+      // Hide non-selectable containers (e.g. Gmail's [Gmail] parent folder)
+      .filter(f => !f.flags?.has('\\Noselect'))
+      .map(f => ({
+        name: f.name,
+        path: f.path,
+        delimiter: f.delimiter ?? '/',
+        flags: Array.from(f.flags ?? []),
+        specialUse: (f as unknown as Record<string, unknown>).specialUse as string | undefined ?? undefined,
+      }))
   } finally {
     await client.logout()
   }
