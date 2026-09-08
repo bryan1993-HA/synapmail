@@ -1,18 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { UpdateBanner } from './UpdateBanner'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('synapmail:sidebarCollapsed') === 'true'
-    }
-    return false
-  })
+  // Start from the SSR-safe default and read the stored preference after mount,
+  // so the server and first client render match (no hydration mismatch).
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  useEffect(() => {
+    setSidebarCollapsed(localStorage.getItem('synapmail:sidebarCollapsed') === 'true')
+  }, [])
 
   const toggleCollapse = () => {
     setSidebarCollapsed(v => {

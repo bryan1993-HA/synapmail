@@ -61,9 +61,9 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
   const [currentFolder, setCurrentFolder] = useState('INBOX')
   const [accountOpen, setAccountOpen] = useState(false)
   const [dragOverPath, setDragOverPath] = useState<string | null>(null)
-  const [activeAccountId, setActiveAccountId] = useState<string | null>(
-    typeof window !== 'undefined' ? localStorage.getItem('synapmail:activeAccountId') : null
-  )
+  // Read from localStorage after mount (see effect below) rather than in the
+  // initializer, so the server and first client render match (no hydration mismatch).
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -73,6 +73,7 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
   }, [pathname])
 
   useEffect(() => {
+    setActiveAccountId(localStorage.getItem('synapmail:activeAccountId'))
     const handler = (e: Event) => {
       setActiveAccountId((e as CustomEvent<string>).detail)
     }
