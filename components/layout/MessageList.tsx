@@ -9,7 +9,11 @@ import type { Message, Folder, ReadReceipt } from '@/types/email'
 import { MessageContextMenu, type ContextMenuState } from '@/components/ui/MessageContextMenu'
 import { ScheduledPopover } from '@/components/mail/ScheduledPopover'
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+  return res.json()
+}
 
 const formatDate = (iso: string) => {
   const d = new Date(iso)
@@ -165,7 +169,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   // Detect Sent folder (path may be "Sent", "INBOX.Sent", "[Gmail]/Sent Mail", etc.)
   const isSentFolder = /sent/i.test(folder)
 
-  const { data, isValidating, mutate } = useSWR<{ messages: Message[]; total: number }>(
+  const { data, error, isValidating, mutate } = useSWR<{ messages: Message[]; total: number }>(
     debouncedSearch
       ? null
       : `/api/messages?folder=${encodeURIComponent(folder)}&filter=${filter}&page=${page}&perPage=${perPage}${accountParam}`,
@@ -205,7 +209,10 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   const isSearchMode = debouncedSearch.length >= 2
   const messages = isSearchMode ? (searchData?.messages ?? []) : accumulated
   const total = data?.total ?? 0
-  const loading = isSearchMode ? (!searchData && isSearching) : !data
+  // Distinguish a failed load from an empty folder: only treat it as an error
+  // when the list request failed AND there is nothing already displayed.
+  const loadError = !isSearchMode && !!error && accumulated.length === 0
+  const loading = isSearchMode ? (!searchData && isSearching) : (!data && !error)
 
   // Tracking status for Sent folder — batch fetch by subject (avoids Outlook Message-ID rewrite)
   const sentSubjects = isSentFolder
@@ -520,7 +527,23 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
           </div>
         )}
 
-        {!loading && threads.length === 0 && (
+        {!loading && loadError && (
+          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground px-6 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-destructive/10 flex items-center justify-center mb-3">
+              <RefreshCw className="w-6 h-6 text-destructive/60" />
+            </div>
+            <p className="text-sm font-medium text-foreground">{t('loadError')}</p>
+            <p className="text-xs mt-1 mb-4 max-w-xs">{t('loadErrorDesc')}</p>
+            <button
+              onClick={() => mutate()}
+              className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
+            >
+              {t('retry')}
+            </button>
+          </div>
+        )}
+
+        {!loading && !loadError && threads.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
             <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
               <Search className="w-6 h-6 opacity-30" />
