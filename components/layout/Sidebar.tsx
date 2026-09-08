@@ -245,7 +245,7 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
           <ThemeToggle collapsed />
           <Link
             href="/settings"
-            onClick={handleFolderClick}
+            onClick={() => handleFolderClick()}
             title={t('settings')}
             className="flex items-center justify-center w-full h-9 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/8 transition-all"
           >
@@ -438,7 +438,7 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
         <ThemeToggle />
         <Link
           href="/settings"
-          onClick={handleFolderClick}
+          onClick={() => handleFolderClick()}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-zinc-200 hover:bg-white/8 transition-all"
         >
           <Settings className="w-4 h-4" />
