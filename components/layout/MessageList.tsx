@@ -117,14 +117,19 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   // Drag state
   const [draggingUid, setDraggingUid] = useState<string | null>(null)
 
-  const prevFolder = useRef(folder)
+  const prevListKey = useRef(`${folder}|${activeAccountId ?? ''}`)
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const internalSearchRef = useRef<HTMLInputElement>(null)
   const effectiveSearchRef = searchInputRef ?? internalSearchRef
 
+  // Reset the accumulated list when either the folder OR the active account
+  // changes. Previously this only watched `folder`, so switching account on the
+  // same folder left the previous account's messages on screen (mixed with
+  // loading placeholders) until the new data arrived.
   useEffect(() => {
-    if (prevFolder.current !== folder) {
-      prevFolder.current = folder
+    const listKey = `${folder}|${activeAccountId ?? ''}`
+    if (prevListKey.current !== listKey) {
+      prevListKey.current = listKey
       setPage(1)
       setAccumulated([])
       setReadUids(new Set())
@@ -133,7 +138,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
       setSelectedThreadKey(null)
       setCheckedUids(new Set())
     }
-  }, [folder])
+  }, [folder, activeAccountId])
 
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
