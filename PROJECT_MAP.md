@@ -34,6 +34,9 @@ Quick navigation reference for every file and feature.
 | Change DB queries | `lib/db.ts` |
 | Change IMAP logic | `lib/imap.ts` |
 | Change SMTP / forwarded attachments | `lib/smtp.ts` + `app/api/messages/send/route.ts` |
+| Strip HTML pour IA ou text/plain | `lib/html.ts` → `htmlToText()` + `wrapHtmlDocument()` |
+| Rendu email iframe (liens, styles) | `lib/email-iframe.ts` → `buildIframeHtml()` + `hardenIframeLinks()` |
+| Changer détection dossiers spéciaux | `app/api/folders/route.ts` → `detectSpecial()` (RFC 6154 + regex) |
 | Change scheduled email worker | `lib/scheduler.ts` |
 | Change SSE events for scheduler | `lib/schedulerEvents.ts` |
 | Change rules engine | `lib/rules.ts` |
@@ -230,13 +233,15 @@ Quick navigation reference for every file and feature.
 │   ├── db.ts                        ← PostgreSQL pool — query<T>(sql, values?)
 │   ├── encrypt.ts                   ← AES-256-GCM encrypt/decrypt
 │   ├── i18n.ts                      ← next-intl server config
+│   ├── email-iframe.ts              ← buildIframeHtml() + hardenIframeLinks() — partagé ReadingPane/ThreadPane
+│   ├── html.ts                      ← htmlToText() + wrapHtmlDocument() — partagé SMTP/IA
 │   ├── imap.ts                      ← imapflow wrapper (list, get, delete, move, flags, bulk, attachments)
 │   ├── msOAuth.ts                   ← Microsoft OAuth2 token refresh
 │   ├── routing.ts                   ← next-intl routing config
 │   ├── rules.ts                     ← Rules engine: evaluate conditions, run actions, execute all
 │   ├── scheduler.ts                 ← Scheduled email worker (FOR UPDATE SKIP LOCKED, 60 s interval)
 │   ├── schedulerEvents.ts           ← SSE event emitter for scheduler (scheduled_sent)
-│   ├── smtp.ts                      ← nodemailer wrapper (send + verify)
+│   ├── smtp.ts                      ← nodemailer wrapper (send + verify + wrap HTML + text/plain)
 │   └── utils.ts                     ← cn() + helpers
 │
 ├── types/

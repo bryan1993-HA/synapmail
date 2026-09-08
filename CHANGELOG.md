@@ -11,6 +11,43 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.2] — 2026-09-08 — Bug fixes & resilience
+
+### Fixed — IMAP & performance
+- **Pagination sans SEARCH ALL** — pour le filtre "Tous", la page de messages est maintenant dérivée directement de `mailbox.exists` (range de séquences), évitant un `SEARCH ALL` sur toute la boîte. Seuls les filtres "Non lus" et "Suivis" utilisent encore SEARCH. Gain significatif sur les grandes boîtes.
+- **Détection dossiers spéciaux** — utilise désormais les attributs RFC 6154 SPECIAL-USE (`\Sent`, `\Drafts`, `\Junk`, `\Trash`) en priorité (indépendant de la langue du serveur), avec fallback par regex word-boundary. Corrige la détection sur les boîtes non-anglaises (Gmail FR, etc.)
+- **Filtre `\Noselect`** — les dossiers non-sélectionnables (ex : `[Gmail]` parent) sont maintenant filtrés et n'apparaissent plus dans la sidebar
+
+### Fixed — Sidebar
+- **Suppression FALLBACK_FOLDERS** — les dossiers Outlook fictifs (`Sent Items`, `Deleted Items`, `Junk Email`…) ne sont plus affichés. Ces chemins n'existent pas sur Gmail/IMAP standard et causaient des dossiers vides trompeurs
+- **Skeleton loading** — un skeleton animé (`bg-muted`) s'affiche pendant le chargement des dossiers (modes collapsed et expanded)
+- **État d'erreur** — si `/api/folders` échoue, un message d'erreur explicite avec bouton Retry s'affiche au lieu d'une sidebar vide sans explication
+- **Highlight dossier actif** — le surlignage dans la sidebar suit maintenant correctement le dossier sélectionné lors de la navigation (le `useEffect` sur `pathname` ne se déclenchait pas car `/mail` ne change pas entre dossiers)
+
+### Fixed — Emails sortants (anti-spam)
+- **Document HTML complet** — les emails sortants sont maintenant enveloppés dans un `<!DOCTYPE html><html>…</html>` complet, évitant le flag SpamAssassin `HTML_MIME_NO_HTML_TAG`
+- **Partie text/plain** — une alternative `text/plain` est automatiquement dérivée du HTML, évitant le flag `MIME_HTML_ONLY`
+
+### Fixed — IA Copilot
+- **Strip CSS/JS des emails** — le prompt envoyé au modèle IA passe désormais par `htmlToText()` qui supprime `<style>`, `<script>`, `<head>` et décode les entités HTML avant l'envoi. Plus de CSS brut dans les résumés/traductions
+- **Panel résultat scrollable** — le panneau de résultat IA a maintenant `max-h-[30vh] sm:max-h-[45vh] overflow-y-auto` pour éviter de pousser l'email hors de l'écran sur les longues traductions
+
+### Fixed — Affichage emails (iframe)
+- **Liens dans les emails** — tous les liens dans les emails s'ouvrent maintenant dans un nouvel onglet via `<base target="_blank">` injecté dans le `<head>`, avec `rel="noopener noreferrer"` sur chaque `<a>` (protection contre reverse tab-nabbing)
+
+### Fixed — UX & hydration (mergés via PRs Pikatsuto)
+- **Hydration errors** — ThemeToggle, AppShell et Sidebar utilisent le pattern SSR-safe : `useState(false/null)` + lecture `localStorage` dans `useEffect` (corrige React #418 / #423)
+- **Reset liste au changement de compte** — la liste de messages est réinitialisée (page, sélection, recherche) quand le compte actif change
+- **SWR global résilient** — `dedupingInterval: 5000` + `errorRetryCount: 2` : évite les tempêtes de requêtes lors de navigation rapide
+- **État d'erreur MessageList** — un état d'erreur distinct avec bouton Retry s'affiche quand le chargement des messages échoue (au lieu du message "boîte vide" trompeur)
+- **IMAP timeouts** — `connectionTimeout: 10s` + `greetingTimeout: 8s` : les hôtes IMAP lents ou inaccessibles échouent rapidement au lieu de bloquer la requête ~90s
+
+### Added — Utilitaires partagés
+- **`lib/html.ts`** — `htmlToText()` (strip HTML + décodage entités numériques) et `wrapHtmlDocument()`, partagés entre SMTP et l'API IA
+- **`lib/email-iframe.ts`** — `buildIframeHtml()` (injection styles + `<base target="_blank">`) et `hardenIframeLinks()`, partagés entre ReadingPane et ThreadPane
+
+---
+
 ## [1.2.1] — 2026-09-01 — GitHub repo quality
 
 ### Added
