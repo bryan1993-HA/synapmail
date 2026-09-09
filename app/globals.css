@@ -10,6 +10,15 @@
   }
 }
 
+/* Compose modal — "Aurora" ambient drift */
+@keyframes synap-aurora-drift {
+  0%   { transform: translate3d(-3%, -2%, 0) scale(1); }
+  100% { transform: translate3d(4%, 3%, 0) scale(1.08); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .synap-aurora { animation: synap-aurora-drift 22s ease-in-out infinite alternate; }
+}
+
 /* Tiptap editor */
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);

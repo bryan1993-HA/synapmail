@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
-import type { Signature } from '@/types/account'
+import type { Signature, EmailAccount } from '@/types/account'
 import type { Attachment } from '@/types/email'
 import type { ComposeTemplate } from '@/types/template'
 import { EmailTokenInput } from './EmailTokenInput'
@@ -73,10 +73,10 @@ function ToolbarBtn({
       disabled={disabled}
       title={title}
       className={cn(
-        'w-7 h-7 flex items-center justify-center rounded text-sm transition-colors',
+        'w-7 h-7 flex items-center justify-center rounded-md text-sm transition-colors shrink-0',
         active
-          ? 'bg-primary/15 text-primary'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+          ? 'bg-violet-500/20 text-violet-700 dark:text-violet-200'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted',
         disabled && 'opacity-30 cursor-not-allowed'
       )}
     >
@@ -86,8 +86,14 @@ function ToolbarBtn({
 }
 
 function Separator() {
-  return <div className="w-px h-4 bg-border mx-0.5 shrink-0" />
+  return <div className="w-px h-5 bg-border mx-1 shrink-0" />
 }
+
+/* Aurora — inset field row, violet ring on focus */
+const FIELD_ROW =
+  'rounded-2xl border px-4 min-h-[46px] transition-colors ' +
+  'border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.03] ' +
+  'focus-within:border-violet-500 focus-within:bg-violet-500/[0.06] focus-within:ring-2 focus-within:ring-violet-500/40'
 
 export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBody, onClose, onSent }: ComposeModalProps) {
   const [toTokens, setToTokens] = useState<string[]>(() => {
@@ -126,6 +132,8 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
   const [pendingDraftContent, setPendingDraftContent] = useState<string | null>(initialBody ?? null)
   const [showSigDropdown, setShowSigDropdown] = useState(false)
   const sigDropdownRef = useRef<HTMLDivElement>(null)
+  const [showFromDropdown, setShowFromDropdown] = useState(false)
+  const fromDropdownRef = useRef<HTMLDivElement>(null)
   const [requestReadReceipt, setRequestReadReceipt] = useState(false)
   const [showTplDropdown, setShowTplDropdown] = useState(false)
   const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false)
@@ -147,6 +155,13 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
   const { data: sigData } = useSWR<{ data: Signature[] }>('/api/signatures', fetcher)
   const { data: settingsData } = useSWR<{ data: AppSettings }>('/api/settings', fetcher)
   const { data: tplData } = useSWR<{ data: ComposeTemplate[] }>('/api/templates', fetcher)
+  const { data: acctData } = useSWR<{ data: EmailAccount[] }>('/api/accounts', fetcher)
+  const accounts = acctData?.data ?? []
+
+  // Compte d'envoi — modifiable par message quand l'utilisateur a plusieurs comptes
+  const [fromAccountId, setFromAccountId] = useState(accountId)
+  const fromAccount = accounts.find(a => a.id === fromAccountId)
+  const fromEmail = fromAccount?.email ?? accountEmail
   const undoSendDelay = settingsData?.data?.undo_send_delay ?? 0
 
   useEffect(() => {
@@ -202,7 +217,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
     content: '',
     editorProps: {
       attributes: {
-        class: 'outline-none min-h-[200px] text-sm text-foreground px-5 py-4 prose prose-sm dark:prose-invert max-w-none',
+        class: 'outline-none min-h-[220px] text-sm leading-relaxed text-foreground px-6 py-5 prose prose-sm dark:prose-invert max-w-none',
       },
     },
   })
@@ -249,6 +264,18 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showSigDropdown])
+
+  // Close "from account" dropdown on outside click
+  useEffect(() => {
+    if (!showFromDropdown) return
+    const handler = (e: MouseEvent) => {
+      if (fromDropdownRef.current && !fromDropdownRef.current.contains(e.target as Node)) {
+        setShowFromDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showFromDropdown])
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -386,7 +413,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
     const bodyHtml = (editor?.getHTML() ?? '') + quotedHtml()
     const payload: Record<string, unknown> = {
-      accountId,
+      accountId: fromAccountId,
       to: toTokens,
       cc: ccTokens.length ? ccTokens : undefined,
       bcc: bccTokens.length ? bccTokens : undefined,
@@ -476,20 +503,22 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
   if (undoCountdown > 0) {
     const progress = (undoCountdown / undoDelayRef.current) * 100
     return (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] bg-background border border-border rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4 min-w-[320px] max-w-sm">
-        <SendHorizonal className="w-4 h-4 text-muted-foreground shrink-0" />
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] bg-card border border-border ring-1 ring-inset ring-white/25 dark:ring-white/[0.06] rounded-[20px] shadow-[0_28px_80px_-16px_rgba(0,0,0,0.55)] px-5 py-4 flex items-center gap-4 min-w-[320px] max-w-sm motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-300">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white/50 dark:bg-white/10 border border-white/60 dark:border-white/15 text-violet-600 dark:text-violet-200">
+          <SendHorizonal className="w-3.5 h-3.5" />
+        </span>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground">Envoi dans {undoCountdown}s…</p>
-          <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
+          <p className="text-sm font-medium text-foreground">Envoi dans <span className="font-mono tabular-nums">{undoCountdown}s</span>…</p>
+          <div className="mt-1.5 h-1 bg-black/10 dark:bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-500 rounded-full transition-all duration-1000 ease-linear"
+              className="h-full bg-gradient-to-r from-violet-400 to-blue-400 rounded-full transition-all duration-1000 ease-linear"
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
         <button
           onClick={handleCancelUndo}
-          className="shrink-0 text-sm font-medium text-primary hover:text-primary/80 transition-colors px-1"
+          className="shrink-0 text-sm font-medium text-violet-600 dark:text-violet-300 hover:text-violet-500 transition-colors px-1"
         >
           Annuler
         </button>
@@ -500,40 +529,114 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
   return (
     /* ── Backdrop ────────────────────────────────────────────────────── */
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-lg motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
       onClick={e => { if (e.target === e.currentTarget) { if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY); onClose() } }}
     >
-      <div className="w-full max-w-2xl flex flex-col rounded-2xl shadow-2xl overflow-hidden border border-white/8"
+      {/* ── Aurora — soft colour glow in the margin around the panel ── */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="synap-aurora absolute inset-[-15%]">
+          <div
+            className="absolute -left-[8%] -top-[8%] h-[42vh] w-[42vh] rounded-full blur-[120px]"
+            style={{ background: 'radial-gradient(circle at 50% 50%, rgba(217,70,239,0.14), transparent 70%)' }}
+          />
+          <div
+            className="absolute -right-[8%] -bottom-[8%] h-[40vh] w-[40vh] rounded-full blur-[120px]"
+            style={{ background: 'radial-gradient(circle at 50% 50%, rgba(34,211,238,0.10), transparent 70%)' }}
+          />
+          <div
+            className="absolute left-1/2 top-[8%] h-[46vh] w-[46vh] -translate-x-1/2 rounded-full blur-[130px]"
+            style={{ background: 'radial-gradient(circle at 50% 50%, rgba(139,92,246,0.12), transparent 72%)' }}
+          />
+        </div>
+      </div>
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="compose-title"
+        className="relative w-full max-w-[820px] flex flex-col rounded-[24px] overflow-hidden border border-border bg-card ring-1 ring-inset ring-white/25 dark:ring-white/[0.06] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.6)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"
         style={{ maxHeight: '88vh' }}>
 
         {/* ── Header ──────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-5 py-4 bg-blue-600 shrink-0">
-          <PenSquare className="w-4 h-4 text-white/70 shrink-0" />
-          <span className="text-sm font-semibold text-white flex-1">{modeTitle[mode]}</span>
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-border shrink-0">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-600 dark:text-violet-300">
+            <PenSquare className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div id="compose-title" className="text-[15px] font-semibold leading-tight tracking-tight text-foreground">{modeTitle[mode]}</div>
+            <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={fromEmail}>{fromEmail}</div>
+          </div>
 
           {draftRestored && (
-            <span className="text-[10px] text-white/60 bg-white/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <span className="text-[10px] font-medium text-violet-700 dark:text-violet-300 bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
               Brouillon restauré
               <button
                 onClick={() => { setDraftRestored(false); if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY) }}
-                className="hover:text-white ml-0.5"
+                className="hover:text-foreground ml-0.5"
               >×</button>
             </span>
           )}
 
           <button
             onClick={() => { if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY); onClose() }}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/15 transition-colors"
+            aria-label="Fermer"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* ── Fields ──────────────────────────────────────────────────── */}
-        <div className="bg-background px-5 pt-4 pb-0 shrink-0 space-y-0">
+        <div className="px-4 pt-3 pb-1 shrink-0 space-y-1.5">
+          {/* From — only when several accounts */}
+          {accounts.length > 1 && (
+            <div className={cn('relative flex items-center gap-3 py-2.5', FIELD_ROW, showFromDropdown && 'border-violet-500 ring-2 ring-violet-500/40')}>
+              <span className="text-[11px] font-semibold text-muted-foreground w-12 shrink-0 uppercase tracking-wider">De</span>
+              <div className="relative flex-1 min-w-0" ref={fromDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowFromDropdown(v => !v)}
+                  aria-haspopup="listbox"
+                  aria-expanded={showFromDropdown}
+                  className="w-full flex items-center gap-2 bg-transparent text-sm text-foreground py-1 outline-none"
+                >
+                  <span className="truncate">
+                    {fromAccount ? `${fromAccount.name} · ${fromAccount.email}` : fromEmail}
+                  </span>
+                  <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 ml-auto text-muted-foreground transition-transform', showFromDropdown && 'rotate-180')} />
+                </button>
+                {showFromDropdown && (
+                  <div role="listbox" className="absolute top-full mt-2 left-0 right-0 z-20 bg-popover border border-border rounded-xl shadow-lg py-1 overflow-hidden">
+                    {accounts.map(a => {
+                      const active = a.id === fromAccountId
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          onClick={() => { setFromAccountId(a.id); setShowFromDropdown(false) }}
+                          className={cn(
+                            'w-full flex items-center justify-between gap-2 px-3 py-2 text-xs text-left transition-colors',
+                            active ? 'bg-violet-500/10' : 'hover:bg-violet-500/10'
+                          )}
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            <span className="font-medium text-foreground">{a.name}</span>
+                            <span className="text-muted-foreground"> · {a.email}</span>
+                          </span>
+                          {active && <Check className="w-3 h-3 shrink-0 text-violet-500" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {/* To */}
-          <div className="flex items-start gap-3 py-2 border-b border-border min-h-[40px]">
-            <span className="text-xs font-medium text-muted-foreground w-10 shrink-0 uppercase tracking-wide mt-1.5">À</span>
+          <div className={cn('flex items-start gap-3 py-2.5', FIELD_ROW)}>
+            <span className="text-[11px] font-semibold text-muted-foreground w-12 shrink-0 uppercase tracking-wider mt-1.5">À</span>
             <EmailTokenInput
               tokens={toTokens}
               onChange={setToTokens}
@@ -542,12 +645,12 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
             />
             <div className="flex items-center gap-1 shrink-0 mt-1">
               {!showCc && (
-                <button onClick={() => setShowCc(true)} className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-accent transition-colors">
+                <button onClick={() => setShowCc(true)} className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors">
                   Cc
                 </button>
               )}
               {!showBcc && (
-                <button onClick={() => setShowBcc(true)} className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-accent transition-colors">
+                <button onClick={() => setShowBcc(true)} className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors">
                   Cci
                 </button>
               )}
@@ -556,8 +659,8 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
           {/* CC */}
           {showCc && (
-            <div className="flex items-start gap-3 py-2 border-b border-border min-h-[40px]">
-              <span className="text-xs font-medium text-muted-foreground w-10 shrink-0 uppercase tracking-wide mt-1.5">Cc</span>
+            <div className={cn('flex items-start gap-3 py-2.5', FIELD_ROW)}>
+              <span className="text-[11px] font-semibold text-muted-foreground w-12 shrink-0 uppercase tracking-wider mt-1.5">Cc</span>
               <EmailTokenInput
                 tokens={ccTokens}
                 onChange={setCcTokens}
@@ -565,7 +668,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                 autoFocus={mode !== 'replyAll'}
                 accountId={accountId}
               />
-              <button onClick={() => { setShowCc(false); setCcTokens([]) }} className="shrink-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded p-0.5 transition-colors mt-1.5">
+              <button onClick={() => { setShowCc(false); setCcTokens([]) }} className="shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded p-0.5 transition-colors mt-1.5">
                 <X className="w-3 h-3" />
               </button>
             </div>
@@ -573,8 +676,8 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
           {/* BCC */}
           {showBcc && (
-            <div className="flex items-start gap-3 py-2 border-b border-border min-h-[40px]">
-              <span className="text-xs font-medium text-muted-foreground w-10 shrink-0 uppercase tracking-wide mt-1.5">Cci</span>
+            <div className={cn('flex items-start gap-3 py-2.5', FIELD_ROW)}>
+              <span className="text-[11px] font-semibold text-muted-foreground w-12 shrink-0 uppercase tracking-wider mt-1.5">Cci</span>
               <EmailTokenInput
                 tokens={bccTokens}
                 onChange={setBccTokens}
@@ -582,26 +685,26 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                 autoFocus
                 accountId={accountId}
               />
-              <button onClick={() => { setShowBcc(false); setBccTokens([]) }} className="shrink-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded p-0.5 transition-colors mt-1.5">
+              <button onClick={() => { setShowBcc(false); setBccTokens([]) }} className="shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded p-0.5 transition-colors mt-1.5">
                 <X className="w-3 h-3" />
               </button>
             </div>
           )}
 
           {/* Subject */}
-          <div className="flex items-center gap-3 py-2.5 border-b border-border">
-            <span className="text-xs font-medium text-muted-foreground w-10 shrink-0 uppercase tracking-wide">Objet</span>
+          <div className={cn('flex items-center gap-3 py-2.5', FIELD_ROW)}>
+            <span className="text-[11px] font-semibold text-muted-foreground w-12 shrink-0 uppercase tracking-wider">Objet</span>
             <Input
               value={subject}
               onChange={e => setSubject(e.target.value)}
               placeholder="Objet de votre message"
-              className="h-7 text-sm border-0 rounded-none px-0 focus-visible:ring-0 shadow-none flex-1 font-medium"
+              className="h-7 text-sm border-0 rounded-none px-0 bg-transparent focus-visible:ring-0 shadow-none flex-1 font-semibold"
             />
           </div>
 
           {/* Forwarded attachments */}
           {mode === 'forward' && forwardedAtts.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 py-2.5 border-b border-border">
+            <div className={cn('flex flex-wrap gap-1.5 py-2.5', FIELD_ROW)}>
               {forwardedAtts.map(att => (
                 <div key={att.id} className="flex items-center gap-1.5 bg-muted/50 rounded-md px-2 py-1 text-xs text-muted-foreground">
                   <Paperclip className="w-3 h-3 shrink-0" />
@@ -617,7 +720,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
         {/* ── Toolbar ─────────────────────────────────────────────────── */}
         {editor && (
-          <div className="flex items-center gap-0.5 px-3 py-2 bg-muted shrink-0 flex-wrap border-y border-border">
+          <div className="flex items-center gap-0.5 px-4 py-2 shrink-0 flex-wrap border-y border-border bg-muted/40">
             <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Annuler">
               <Undo className="w-3.5 h-3.5" />
             </ToolbarBtn>
@@ -680,17 +783,17 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
         )}
 
         {/* ── Editor ──────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto min-h-0 bg-background">
+        <div className="flex-1 overflow-y-auto min-h-0 bg-transparent">
           <EditorContent editor={editor} />
           {(mode === 'reply' || mode === 'replyAll' || mode === 'forward') && replyTo && (
-            <div className="px-5 pb-5" dangerouslySetInnerHTML={{ __html: quotedHtml() }} />
+            <div className="px-6 pb-6" dangerouslySetInnerHTML={{ __html: quotedHtml() }} />
           )}
         </div>
 
         {/* ── Save as Template modal ──────────────────────────────────── */}
         {showSaveAsTemplate && (
-          <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-card border border-border rounded-xl p-5 w-72 shadow-xl">
+          <div className="absolute inset-0 z-50 bg-background/80 flex items-center justify-center">
+            <div className="bg-popover border border-border rounded-2xl p-5 w-72 shadow-2xl">
               <h3 className="font-semibold text-sm mb-3">Enregistrer comme template</h3>
               <Input
                 value={newTplName}
@@ -714,8 +817,8 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
         {/* ── Fill variables modal ─────────────────────────────────────── */}
         {pendingTemplate && (
-          <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-card border border-border rounded-xl p-5 w-80 shadow-xl">
+          <div className="absolute inset-0 z-50 bg-background/80 flex items-center justify-center">
+            <div className="bg-popover border border-border rounded-2xl p-5 w-80 shadow-2xl">
               <h3 className="font-semibold text-sm mb-1">Remplir les variables</h3>
               <p className="text-xs text-muted-foreground mb-3">{pendingTemplate.name}</p>
               <div className="space-y-2 mb-4">
@@ -744,7 +847,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
         )}
 
         {/* ── Footer ──────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-2 px-4 py-3 border-t border-border bg-muted shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 px-5 py-3.5 border-t border-border bg-muted/40 shrink-0 flex-wrap">
           {error && <p className="text-xs text-destructive w-full mb-1">{error}</p>}
 
           {/* Schedule presets */}
@@ -757,10 +860,10 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                     type="button"
                     onClick={() => setScheduledAt(prev => prev === preset.value ? '' : preset.value)}
                     className={cn(
-                      'px-2.5 py-1 text-xs rounded-md border transition-colors',
+                      'px-2.5 py-1 text-xs rounded-full border transition-colors',
                       scheduledAt === preset.value
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+                        ? 'bg-gradient-to-br from-violet-500 to-blue-500 text-white border-transparent'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
                     )}
                   >
                     {preset.label}
@@ -770,10 +873,10 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                   type="button"
                   onClick={() => setShowCustomDate(v => !v)}
                   className={cn(
-                    'px-2.5 py-1 text-xs rounded-md border transition-colors',
+                    'px-2.5 py-1 text-xs rounded-full border transition-colors',
                     showCustomDate || isCustomDate
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+                      ? 'bg-gradient-to-br from-violet-500 to-blue-500 text-white border-transparent'
+                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted'
                   )}
                 >
                   Personnalisé…
@@ -791,31 +894,39 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                   value={scheduledAt}
                   min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
                   onChange={e => setScheduledAt(e.target.value)}
-                  className="h-7 w-auto text-xs rounded border border-border bg-background text-foreground px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="h-7 w-auto text-xs rounded-md border border-border bg-background text-foreground px-2 focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               )}
             </div>
           )}
 
-          <Button size="sm" onClick={handleSend} disabled={sending} className="h-8 px-5 bg-blue-600 hover:bg-blue-500 text-white border-0">
+          <Button
+            size="sm"
+            onClick={handleSend}
+            disabled={sending}
+            className="h-9 gap-2 px-6 rounded-full border-0 bg-gradient-to-br from-violet-400 to-blue-400 text-[13px] font-semibold text-white ring-1 ring-inset ring-white/40 shadow-[0_10px_30px_-6px_rgba(139,92,246,0.65)] transition hover:brightness-105 disabled:opacity-60"
+          >
+            {scheduledAt ? <Clock className="w-4 h-4" /> : <SendHorizonal className="w-4 h-4" />}
             {sending
               ? (scheduledAt ? 'Programmation…' : 'Envoi…')
               : (scheduledAt ? 'Programmer' : 'Envoyer')}
           </Button>
 
-          <Button size="sm" variant="ghost" onClick={() => { if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY); onClose() }} className="h-8">
+          <Button size="sm" variant="ghost" onClick={() => { if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY); onClose() }} className="h-9 hover:bg-muted">
             Annuler
           </Button>
+
+          <div className="w-px h-5 bg-white/40 dark:bg-white/15 mx-0.5 shrink-0" />
 
           <button
             type="button"
             title={scheduledAt ? `Programmé : ${new Date(scheduledAt).toLocaleString('fr-FR')}` : 'Envoyer plus tard'}
             onClick={() => setShowSchedulePicker(v => !v)}
             className={cn(
-              'w-7 h-7 flex items-center justify-center rounded transition-colors',
+              'w-7 h-7 flex items-center justify-center rounded-md transition-colors shrink-0',
               scheduledAt
-                ? 'text-primary bg-primary/15'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                ? 'text-violet-700 dark:text-violet-200 bg-violet-500/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             )}
           >
             <Clock className="w-4 h-4" />
@@ -826,10 +937,10 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
             title={requestReadReceipt ? 'Accusé de lecture activé — cliquer pour désactiver' : 'Demander un accusé de lecture'}
             onClick={() => setRequestReadReceipt(v => !v)}
             className={cn(
-              'flex items-center gap-1.5 h-7 px-2 rounded transition-colors text-xs',
+              'flex items-center gap-1.5 h-7 px-2 rounded-md transition-colors text-xs shrink-0',
               requestReadReceipt
                 ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             )}
           >
             <Eye className="w-3.5 h-3.5 shrink-0" />
@@ -843,16 +954,16 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
               onClick={() => setShowTplDropdown(v => !v)}
               title="Insérer un template"
               className={cn(
-                'w-7 h-7 flex items-center justify-center rounded transition-colors',
+                'w-7 h-7 flex items-center justify-center rounded-md transition-colors shrink-0',
                 showTplDropdown
-                  ? 'text-primary bg-primary/15'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  ? 'text-violet-700 dark:text-violet-200 bg-violet-500/20'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               )}
             >
               <LayoutTemplate className="w-4 h-4" />
             </button>
             {showTplDropdown && (
-              <div className="absolute bottom-full mb-1 left-0 z-50 bg-popover border border-border rounded-lg shadow-lg min-w-[190px] py-1 overflow-hidden">
+              <div className="absolute bottom-full mb-1 left-0 z-50 bg-popover border border-border rounded-xl shadow-lg min-w-[190px] py-1 overflow-hidden">
                 {templates.length === 0 ? (
                   <p className="text-xs text-muted-foreground px-3 py-2">Aucun template</p>
                 ) : (
@@ -861,7 +972,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                       key={tpl.id}
                       type="button"
                       onClick={() => applyTemplate(tpl)}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-violet-500/10 transition-colors"
                     >
                       <span className="font-medium">{tpl.name}</span>
                       {tpl.subject && <span className="block text-muted-foreground truncate">{tpl.subject}</span>}
@@ -876,7 +987,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
             type="button"
             title="Enregistrer comme template"
             onClick={() => setShowSaveAsTemplate(true)}
-            className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
           >
             <BookmarkPlus className="w-4 h-4" />
           </button>
@@ -901,10 +1012,10 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                 type="button"
                 onClick={() => setShowSigDropdown(v => !v)}
                 className={cn(
-                  'flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-xs transition-colors',
+                  'flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs transition-colors',
                   showSigDropdown
-                    ? 'border-ring bg-accent text-foreground'
-                    : 'border-input bg-background text-muted-foreground hover:text-foreground hover:border-ring/50'
+                    ? 'border-violet-400/60 bg-violet-500/10 text-foreground'
+                    : 'border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-violet-500/50'
                 )}
               >
                 <span className="max-w-[100px] truncate">
@@ -914,7 +1025,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
               </button>
 
               {showSigDropdown && (
-                <div className="absolute bottom-full mb-1 right-0 min-w-[160px] bg-popover border border-border rounded-lg shadow-lg py-1 z-10 overflow-hidden">
+                <div className="absolute bottom-full mb-1 right-0 min-w-[160px] bg-popover border border-border rounded-xl shadow-lg py-1 z-10 overflow-hidden">
                   {/* Sans signature */}
                   <button
                     type="button"
@@ -922,12 +1033,12 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                     className={cn(
                       'w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-left transition-colors',
                       !selectedSigId
-                        ? 'text-foreground bg-accent'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                        ? 'text-foreground bg-violet-500/10'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-violet-500/10'
                     )}
                   >
                     <span>Sans signature</span>
-                    {!selectedSigId && <Check className="w-3 h-3 shrink-0 text-primary" />}
+                    {!selectedSigId && <Check className="w-3 h-3 shrink-0 text-violet-500" />}
                   </button>
 
                   {signatures.length > 0 && <div className="my-1 border-t border-border" />}
@@ -940,20 +1051,18 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                       className={cn(
                         'w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-left transition-colors',
                         selectedSigId === s.id
-                          ? 'text-foreground bg-accent'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                          ? 'text-foreground bg-violet-500/10'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-violet-500/10'
                       )}
                     >
                       <span className="truncate">{s.name}</span>
-                      {selectedSigId === s.id && <Check className="w-3 h-3 shrink-0 text-primary" />}
+                      {selectedSigId === s.id && <Check className="w-3 h-3 shrink-0 text-violet-500" />}
                     </button>
                   ))}
                 </div>
               )}
             </div>
           )}
-
-          <span className="text-xs text-muted-foreground">{accountEmail}</span>
         </div>
       </div>
     </div>

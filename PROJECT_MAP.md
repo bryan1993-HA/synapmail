@@ -19,6 +19,8 @@ Quick navigation reference for every file and feature.
 | Change email viewer / security banner | `components/layout/ReadingPane.tsx` |
 | Change attachment preview | `components/layout/ReadingPane.tsx` → `AttachmentSection` |
 | Change compose (reply/replyAll/forward/BCC) | `components/mail/ComposeModal.tsx` |
+| Change compose modal look ("Aurora" glass) | `components/mail/ComposeModal.tsx` + `app/globals.css` (`@keyframes synap-aurora-drift`) — no `backdrop-blur` on the panel |
+| Change compose "De" account picker | `components/mail/ComposeModal.tsx` → `showFromDropdown` / `fromDropdownRef` (custom dropdown, not `<select>`) |
 | Change draft auto-save | `components/mail/ComposeModal.tsx` → `DRAFT_KEY` / localStorage |
 | Change scheduled send / undo send | `components/mail/ComposeModal.tsx` |
 | Change compose templates dropdown | `components/mail/ComposeModal.tsx` → LayoutTemplate section |
