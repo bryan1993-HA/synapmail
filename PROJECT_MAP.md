@@ -34,6 +34,7 @@ Quick navigation reference for every file and feature.
 | Change DB queries | `lib/db.ts` |
 | Change IMAP logic | `lib/imap.ts` |
 | Change SMTP / forwarded attachments | `lib/smtp.ts` + `app/api/messages/send/route.ts` |
+| Append email dans dossier Envoyés IMAP | `lib/imap.ts` → `appendToSentFolder()` |
 | Strip HTML pour IA ou text/plain | `lib/html.ts` → `htmlToText()` + `wrapHtmlDocument()` |
 | Rendu email iframe (liens, styles) | `lib/email-iframe.ts` → `buildIframeHtml()` + `hardenIframeLinks()` |
 | Changer détection dossiers spéciaux | `app/api/folders/route.ts` → `detectSpecial()` (RFC 6154 + regex) |

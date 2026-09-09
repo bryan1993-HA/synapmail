@@ -11,6 +11,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.3] — 2026-09-09 — Sent folder sync & refresh fix
+
+### Added
+- **Sauvegarde dans Sent IMAP** — chaque email envoyé (immédiat ou programmé) est automatiquement appendé dans le dossier Envoyés du serveur IMAP via `appendToSentFolder()` (`lib/imap.ts`). Détection du dossier via flag spécial `\Sent` (RFC 6154) ou nom usuel ("Sent Items", "Sent Messages"). Compatible Stalwart, Gmail, Outlook.
+- **MIME brut via MailComposer** — `sendMail()` (`lib/smtp.ts`) compile maintenant le message MIME une fois via `nodemailer/lib/mail-composer` et le retourne avec `{ messageId, raw }`, réutilisé pour l'append IMAP sans ré-encodage.
+
+### Fixed
+- **Refresh liste messages** — le bouton actualiser vidait `accumulated[]` immédiatement ; si SWR renvoyait les mêmes données (cache), l'effet ne se redéclenchait pas → liste vide. Corrigé avec un compteur `refreshKey` qui force l'effet à se relancer même si `data` n'a pas changé.
+- **Crash test connexion compte** — `AccountsClient` crashait (`Cannot read properties of undefined`) quand l'API test retournait `{error}` au lieu de `{imap, smtp}`. Ajout d'une vérification de forme avant `setTestResult`.
+- **TLS auto-signé IMAP/SMTP** — `tls: { rejectUnauthorized: false }` ajouté à imapflow et nodemailer pour les connexions internes Docker (Stalwart self-hosted).
+
+---
+
 ## [1.2.2] — 2026-09-08 — Bug fixes & resilience
 
 ### Fixed — IMAP & performance
