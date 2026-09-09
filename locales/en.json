@@ -152,6 +152,27 @@
     "profileDesc": "Name, email, password",
     "signaturesDesc": "Manage email signatures",
     "title": "Settings",
+    "nav": {
+      "backToMail": "Mailbox",
+      "profile": "Profile",
+      "appearance": "Appearance",
+      "reading": "Reading",
+      "notifications": "Notifications",
+      "composition": "Composition",
+      "accounts": "Accounts",
+      "signatures": "Signatures",
+      "templates": "Templates",
+      "contacts": "Contacts",
+      "rules": "Rules",
+      "ai": "AI Copilot",
+      "admin": "Administration"
+    },
+    "common": {
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "unsaved": "Unsaved changes"
+    },
     "accounts": {
       "title": "Email accounts",
       "add": "Add account",
@@ -178,10 +199,24 @@
     },
     "profile": {
       "title": "Profile",
+      "description": "Your name, address and password",
       "name": "Name",
       "email": "Email",
       "avatar": "Avatar",
+      "infoSection": "Information",
+      "emailLocked": "The email address cannot be changed.",
+      "adminBadge": "Administrator",
       "password": "Change password",
+      "currentPassword": "Current password",
+      "currentPasswordPlaceholder": "Required to change the password",
+      "newPassword": "New password",
+      "newPasswordPlaceholder": "8 characters minimum",
+      "confirmPassword": "Confirm the new password",
+      "passwordMismatch": "Passwords do not match",
+      "passwordTooShort": "The new password must be at least 8 characters",
+      "saveError": "Error while saving",
+      "genericError": "Something went wrong",
+      "updated": "Profile updated",
       "save": "Save changes"
     },
     "signatures": {
@@ -195,11 +230,50 @@
     },
     "appearance": {
       "title": "Appearance",
+      "description": "Customize how Synapmail looks",
       "theme": "Theme",
+      "themeDesc": "Choose the interface appearance",
       "light": "Light",
       "dark": "Dark",
       "system": "System",
-      "language": "Language"
+      "language": "Language",
+      "languageDesc": "Interface language (requires a reload)"
+    },
+    "reading": {
+      "title": "Reading",
+      "description": "Configure how your messages are displayed",
+      "perPage": "Messages per page",
+      "perPageDesc": "Number of messages shown in the list",
+      "displayOptions": "Display options",
+      "threadView": "Conversation view",
+      "threadViewDesc": "Group messages by conversation (Gmail style)",
+      "startDashboard": "Open on the dashboard",
+      "startDashboardDesc": "Show the command center on launch instead of the inbox",
+      "readingPane": "Reading pane",
+      "readingPaneDesc": "Show the message content in the right column by default"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "description": "Manage alerts for new messages",
+      "desktop": "Desktop notifications",
+      "toggleLabel": "Enable notifications",
+      "toggleDesc": "Get an alert when a new message arrives",
+      "permGranted": "The browser allows notifications.",
+      "permDenied": "The browser blocked notifications. Change the permission in your browser settings.",
+      "permDefault": "The browser has not allowed notifications yet.",
+      "allow": "Allow",
+      "hint": "Notifications require browser permission in addition to this setting."
+    },
+    "composition": {
+      "title": "Composition",
+      "description": "Options for writing and sending",
+      "undoTitle": "Undo send",
+      "undoDesc": "After clicking \"Send\", a toast appears with a countdown. You can cancel during that delay. Immediate sends only.",
+      "disabled": "Disabled",
+      "immediate": "Send immediately",
+      "seconds": "{n} seconds",
+      "recommended": "Recommended",
+      "undoHint": "The modal closes right away. A \"Sending in {n}s… Undo\" toast appears at the bottom of the screen."
     },
     "rules": {
       "title": "Rules & Filters",

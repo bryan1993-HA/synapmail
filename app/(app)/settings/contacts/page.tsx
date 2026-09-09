@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { Contact } from '@/types/contact'
+import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -162,18 +163,21 @@ export default function ContactsPage() {
   ]
 
   return (
-    <div className="p-8 max-w-3xl">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Contacts</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {allContacts.length} contact{allContacts.length !== 1 ? 's' : ''}
-            {oneshots > 0 && (
-              <span className="ml-1 text-amber-500">· {oneshots} one-shot{oneshots > 1 ? 's' : ''}</span>
-            )}
-          </p>
-        </div>
+    <SettingsPage width="3xl">
+      <SettingsHeader
+        icon={<Users className="h-4 w-4" />}
+        title="Contacts"
+        description="Extraits automatiquement de vos échanges"
+      />
+
+      {/* Actions */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <p className="mr-auto text-sm text-muted-foreground">
+          {allContacts.length} contact{allContacts.length !== 1 ? 's' : ''}
+          {oneshots > 0 && (
+            <span className="ml-1 text-amber-500">· {oneshots} one-shot{oneshots > 1 ? 's' : ''}</span>
+          )}
+        </p>
         <div className="flex gap-2">
           {oneshots > 0 && (
             <Button
@@ -203,7 +207,7 @@ export default function ContactsPage() {
 
       {/* Create form */}
       {creating && (
-        <div className="mb-6 p-4 border border-border rounded-xl space-y-3 bg-card">
+        <div className="mb-6 space-y-3 rounded-2xl border border-border bg-card/80 p-5 shadow-sm backdrop-blur-sm">
           <h2 className="text-sm font-semibold">Nouveau contact</h2>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -299,8 +303,8 @@ export default function ContactsPage() {
           <div
             key={c.id}
             className={cn(
-              'border border-border rounded-xl overflow-hidden bg-card transition-colors',
-              editingId === c.id && 'ring-1 ring-ring'
+              'border border-border rounded-xl overflow-hidden bg-card shadow-sm transition-colors',
+              editingId === c.id && 'ring-1 ring-violet-500/40'
             )}
           >
             {editingId === c.id ? (
@@ -403,6 +407,6 @@ export default function ContactsPage() {
           Aucun contact pour « {search} »
         </p>
       )}
-    </div>
+    </SettingsPage>
   )
 }

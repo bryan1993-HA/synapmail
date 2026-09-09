@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { ComposeTemplate } from '@/types/template'
+import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -136,26 +137,28 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="p-8 max-w-2xl">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <LayoutTemplate className="w-5 h-5 text-muted-foreground" />
-          <h1 className="text-2xl font-bold">Templates</h1>
-        </div>
+    <SettingsPage width="2xl">
+      <SettingsHeader
+        icon={<LayoutTemplate className="h-4 w-4" />}
+        title="Templates"
+        description="Modèles de composition réutilisables avec variables dynamiques"
+      />
+
+      <div className="mb-4 flex">
         <Button size="sm" onClick={() => { setCreating(true); setError(null) }} className="gap-1.5">
           <Plus className="w-3.5 h-3.5" /> Nouveau template
         </Button>
       </div>
 
       <p className="text-sm text-muted-foreground mb-6">
-        Créez des modèles réutilisables. Utilisez <code className="bg-muted px-1 rounded text-xs">{'{{variable}}'}</code> pour insérer des variables dynamiques (ex : <code className="bg-muted px-1 rounded text-xs">{'{{prenom}}'}</code>, <code className="bg-muted px-1 rounded text-xs">{'{{societe}}'}</code>).
+        Utilisez <code className="bg-muted px-1 rounded text-xs">{'{{variable}}'}</code> pour insérer des valeurs dynamiques (ex : <code className="bg-muted px-1 rounded text-xs">{'{{prenom}}'}</code>, <code className="bg-muted px-1 rounded text-xs">{'{{societe}}'}</code>).
       </p>
 
       {error && <p className="text-sm text-destructive mb-4">{error}</p>}
 
       {/* Create form */}
       {creating && (
-        <div className="mb-6 p-4 border border-border rounded-xl space-y-3 bg-card">
+        <div className="mb-6 space-y-3 rounded-2xl border border-border bg-card/80 p-5 shadow-sm backdrop-blur-sm">
           <h2 className="text-sm font-semibold">Nouveau template</h2>
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Nom</label>
@@ -184,7 +187,7 @@ export default function TemplatesPage() {
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs text-muted-foreground">Variables :</span>
               {extractVars(newHtml + ' ' + newSubject).map(v => (
-                <span key={v} className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-mono">
+                <span key={v} className="inline-flex items-center px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-xs font-mono">
                   {`{{${v}}}`}
                 </span>
               ))}
@@ -208,7 +211,7 @@ export default function TemplatesPage() {
 
       <div className="space-y-3">
         {templates.map(tpl => (
-          <div key={tpl.id} className="border border-border rounded-xl overflow-hidden bg-card">
+          <div key={tpl.id} className="border border-border rounded-xl overflow-hidden bg-card shadow-sm">
             {editingId === tpl.id ? (
               <div className="p-4 space-y-3">
                 <div>
@@ -227,7 +230,7 @@ export default function TemplatesPage() {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs text-muted-foreground">Variables :</span>
                     {extractVars(editHtml + ' ' + editSubject).map(v => (
-                      <span key={v} className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-mono">
+                      <span key={v} className="inline-flex items-center px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-xs font-mono">
                         {`{{${v}}}`}
                       </span>
                     ))}
@@ -287,6 +290,6 @@ export default function TemplatesPage() {
           </div>
         ))}
       </div>
-    </div>
+    </SettingsPage>
   )
 }

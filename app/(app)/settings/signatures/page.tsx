@@ -7,11 +7,12 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import useSWR from 'swr'
-import { Pencil, Trash2, Plus, Check } from 'lucide-react'
+import { Pencil, Trash2, Plus, Check, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { Signature } from '@/types/account'
+import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -129,9 +130,14 @@ export default function SignaturesPage() {
   }
 
   return (
-    <div className="p-8 max-w-2xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Signatures</h1>
+    <SettingsPage width="2xl">
+      <SettingsHeader
+        icon={<FileText className="h-4 w-4" />}
+        title="Signatures"
+        description="Blocs de signature insérés en bas de vos messages"
+      />
+
+      <div className="mb-4 flex">
         <Button size="sm" onClick={() => { setCreating(true); setError(null) }} className="gap-1.5">
           <Plus className="w-3.5 h-3.5" /> Nouvelle signature
         </Button>
@@ -141,7 +147,7 @@ export default function SignaturesPage() {
 
       {/* Create form */}
       {creating && (
-        <div className="mb-6 p-4 border border-border rounded-xl space-y-3 bg-card">
+        <div className="mb-6 space-y-3 rounded-2xl border border-border bg-card/80 p-5 shadow-sm backdrop-blur-sm">
           <h2 className="text-sm font-semibold">Nouvelle signature</h2>
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Nom</label>
@@ -183,7 +189,7 @@ export default function SignaturesPage() {
 
       <div className="space-y-3">
         {signatures.map(sig => (
-          <div key={sig.id} className="border border-border rounded-xl overflow-hidden bg-card">
+          <div key={sig.id} className="border border-border rounded-xl overflow-hidden bg-card shadow-sm">
             {editingId === sig.id ? (
               <div className="p-4 space-y-3">
                 <div>
@@ -220,7 +226,7 @@ export default function SignaturesPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">{sig.name}</span>
                     {sig.isDefault && (
-                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 font-medium">
                         <Check className="w-3 h-3" /> Par défaut
                       </span>
                     )}
@@ -254,6 +260,6 @@ export default function SignaturesPage() {
           </div>
         ))}
       </div>
-    </div>
+    </SettingsPage>
   )
 }

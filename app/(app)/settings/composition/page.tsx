@@ -1,31 +1,22 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import useSWR from 'swr'
-import { Timer, TimerOff } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { Timer, TimerOff, PenSquare } from 'lucide-react'
+import {
+  SettingsPage, SettingsHeader, SettingsSection, ChoiceCards, SaveBar,
+} from '@/components/settings/primitives'
 
 interface UserSettings {
-  theme: string
-  language: string
-  messages_per_page: number
-  thread_view: boolean
-  reading_pane: boolean
-  notifications: boolean
   undo_send_delay: number
 }
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-const DELAY_OPTIONS = [
-  { value: 0,  label: 'Désactivé', description: 'Envoi immédiat' },
-  { value: 5,  label: '5 secondes',  description: null },
-  { value: 10, label: '10 secondes', description: 'Recommandé' },
-  { value: 30, label: '30 secondes', description: null },
-]
-
 export default function CompositionPage() {
+  const t = useTranslations('settings.composition')
+  const tc = useTranslations('settings.common')
   const { data, mutate } = useSWR<{ data: UserSettings }>('/api/settings', fetcher)
   const settings = data?.data
 
@@ -36,6 +27,8 @@ export default function CompositionPage() {
   useEffect(() => {
     if (settings) setUndoDelay(settings.undo_send_delay)
   }, [settings])
+
+  const dirty = !!settings && undoDelay !== settings.undo_send_delay
 
   const handleSave = async () => {
     setSaving(true)
@@ -54,70 +47,48 @@ export default function CompositionPage() {
   }
 
   return (
-    <div className="p-8 max-w-lg">
-      <h1 className="text-2xl font-bold mb-1">Composition</h1>
-      <p className="text-sm text-muted-foreground mb-8">Options liées à la rédaction et à l&apos;envoi</p>
+    <SettingsPage width="lg">
+      <SettingsHeader icon={<PenSquare className="h-4 w-4" />} title={t('title')} description={t('description')} />
 
       <div className="space-y-6">
-        {/* Undo Send */}
-        <div className="border border-border rounded-xl p-5 space-y-4">
+        <SettingsSection>
           <div className="flex items-start gap-3">
             {undoDelay > 0
-              ? <Timer className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-              : <TimerOff className="w-5 h-5 text-muted-foreground mt-0.5 shrink-0" />
-            }
+              ? <Timer className="mt-0.5 h-5 w-5 shrink-0 text-violet-600 dark:text-violet-400" />
+              : <TimerOff className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />}
             <div>
-              <h2 className="font-semibold text-sm">Annulation d&apos;envoi</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Après avoir cliqué sur &quot;Envoyer&quot;, un toast apparaît avec un compte à rebours.
-                Vous pouvez annuler pendant ce délai. Uniquement pour les envois immédiats.
-              </p>
+              <h2 className="text-sm font-semibold">{t('undoTitle')}</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('undoDesc')}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {DELAY_OPTIONS.map(({ value, label, description }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setUndoDelay(value)}
-                className={cn(
-                  'flex flex-col items-start px-4 py-3 rounded-xl border-2 text-left transition-all',
-                  undoDelay === value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-border/80 hover:bg-accent/50'
-                )}
-              >
-                <span className={cn(
-                  'text-sm font-medium',
-                  undoDelay === value ? 'text-primary' : 'text-foreground'
-                )}>
-                  {label}
-                </span>
-                {description && (
-                  <span className="text-xs text-muted-foreground mt-0.5">{description}</span>
-                )}
-              </button>
-            ))}
-          </div>
+          <ChoiceCards
+            columns={2}
+            value={undoDelay}
+            onChange={setUndoDelay}
+            options={[
+              { value: 0, label: t('disabled'), description: t('immediate') },
+              { value: 5, label: t('seconds', { n: 5 }) },
+              { value: 10, label: t('seconds', { n: 10 }), description: t('recommended') },
+              { value: 30, label: t('seconds', { n: 30 }) },
+            ]}
+          />
 
           {undoDelay > 0 && (
-            <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
-              Le modal se fermera immédiatement. Un toast &quot;Envoi dans {undoDelay}s… Annuler&quot; apparaîtra en bas de l&apos;écran.
+            <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              {t('undoHint', { n: undoDelay })}
             </p>
           )}
-        </div>
+        </SettingsSection>
 
-        {success && (
-          <div className="p-3 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 text-sm">
-            Paramètres enregistrés
-          </div>
-        )}
-
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? 'Enregistrement…' : 'Enregistrer'}
-        </Button>
+        <SaveBar
+          dirty={dirty}
+          saving={saving}
+          saved={success}
+          onSave={handleSave}
+          labels={{ save: tc('save'), saving: tc('saving'), saved: tc('saved'), unsaved: tc('unsaved') }}
+        />
       </div>
-    </div>
+    </SettingsPage>
   )
 }
