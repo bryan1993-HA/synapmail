@@ -5,6 +5,24 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Fenêtre de composition — direction « Aurora » (verre dépoli sur aurore)** (`components/mail/ComposeModal.tsx`, `app/globals.css`) :
+  - Fond : **aurore ambiante** (halos radiaux violet / fuchsia / cyan floutés, alpha ≤ 0,14) qui dérive lentement — `keyframes synap-aurora-drift`, gelé par `prefers-reduced-motion`. Elle n'apparaît que **dans la marge autour de la fenêtre**, sur un scrim `bg-background/80 backdrop-blur-lg` (arrière-plan de l'app flouté — le flou est sur le scrim, **jamais sur le panneau**, ce dernier point ayant rendu le corps illisible).
+  - Panneau : **opaque** (`bg-card`, aucun `backdrop-blur`) — l'effet « verre » vient du liseré `ring-inset ring-white/25 dark:ring-white/[0.06]`, des coins `rounded-[24px]` et de la grande ombre douce. Contraste texte garanti en clair comme en sombre (pas de contenu de l'app qui transparaît).
+  - Champs De / À / Objet en **pastilles encastrées** (`FIELD_ROW` : bord `border-black/10 dark:border-white/10`, `focus-within` → bord violet plein + `ring-2 ring-violet-500/40`).
+  - Le sélecteur de compte **« De »** passe du `<select>` natif (menu OS blanc, hors thème) à un **menu déroulant maison** (`bg-popover`, coins arrondis, coches violettes, fermeture au clic extérieur) — même patron que le sélecteur de signature.
+  - Barre d'outils / pied en bandes `bg-muted/40`, survols `hover:bg-muted`, état actif `bg-violet-500/20`.
+  - Bouton **Envoyer** : pilule dégradée `from-violet-400 to-blue-400` + lueur `shadow-[0_10px_30px_-6px_rgba(139,92,246,.65)]`. Présélections de programmation en pilules.
+  - Menus déroulants et sous-modales (template / variables) sur `bg-popover` opaque. Toast **Undo Send** en pilule opaque, barre de progression `from-violet-400 to-blue-400`.
+  - Tout piloté par les tokens `card` / `popover` / `muted` + variantes `dark:` — accessible et cohérent dans les deux thèmes.
+  - **En-tête** : pastille d'icône en verre, titre 15 px + adresse d'envoi (`fromEmail`) en sous-titre mono — supprime la répétition de l'adresse au pied.
+  - **Largeur `max-w-[820px]`** (au lieu de `max-w-2xl` / 672 px) et boutons barre d'outils / pied resserrés à 28 px (`gap-0.5`, `shrink-0`) : la barre Tiptap et la rangée d'actions tiennent sur **une seule ligne**.
+  - Animation d'entrée `motion-safe` (fade + zoom + slide). Accessibilité : `role="dialog"` + `aria-modal` + `aria-labelledby` + `aria-label` sur la croix. Aucun changement de comportement.
+
+---
+
 ## [1.4.0] — 2026-09-09 — Vue Mail « Tri & focus » (Direction B)
 
 Refonte de la présentation de la liste des messages et de l'état vide du volet de lecture,
