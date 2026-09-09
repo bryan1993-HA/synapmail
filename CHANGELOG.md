@@ -7,8 +7,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.5.0] — 2026-09-10 — Refonte des Paramètres + composition « Aurora »
+
+Les Paramètres passent en coquille modale façon Gmail sur un design system partagé,
+et la fenêtre de composition adopte la direction visuelle « Aurora » (verre dépoli sur aurore).
+
+### Added
+- **Paramètres en modale (route interceptrice)** — navigation douce vers `/settings` ou `/settings/<sous-page>` depuis l'app → la zone s'ouvre **par-dessus la page courante** ; chargement direct / rafraîchissement → page pleine classique (fallback). Slot parallèle `app/(app)/@modal` + routes interceptrices `(.)settings` rendant `<SettingsModal>` ; `SettingsModalPanel` mappe le segment d'URL vers **le même composant feuille** que la route pleine page.
+
 ### Changed
-- **Paramètres — refonte complète : coquille modale façon Gmail + design system partagé** (`components/settings/`, `app/(app)/@modal/`, `app/(app)/settings/`) :
+- **Paramètres — refonte complète : design system partagé** (`components/settings/`, `app/(app)/settings/`) :
   - Navigation douce vers `/settings` ou `/settings/<sous-page>` depuis l'app → la zone Paramètres s'ouvre en **modale par-dessus la page courante** (style Gmail / Linear). Chargement direct / rafraîchissement → page pleine classique (fallback).
   - Mécanisme : slot parallèle `app/(app)/@modal` + routes interceptrices `(.)settings` rendant `<SettingsModal>` ; `SettingsModalPanel` mappe le segment d'URL vers **le même composant feuille** que la route pleine page.
   - Design system `components/settings/primitives.tsx` (`SettingsPage` / `SettingsHeader` / `SettingsSection` / `SettingsRow` / `Toggle` / `ChoiceCards` / `Chips` / `SaveBar`) alignant toutes les pages sur le langage visuel du tableau de bord — cartes `rounded-2xl` sur `bg-card/80` + `shadow-sm` + `backdrop-blur`, accent violet, en-têtes à pastille d'icône.
