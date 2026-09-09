@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
-import { Button } from '@/components/ui/button'
+import { useSession } from 'next-auth/react'
+import { User } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useSession } from 'next-auth/react'
+import {
+  SettingsPage, SettingsHeader, SettingsSection, SaveBar,
+} from '@/components/settings/primitives'
 
 interface ProfileData {
   id: string
@@ -16,6 +19,7 @@ interface ProfileData {
 
 export default function ProfilePage() {
   const t = useTranslations('settings.profile')
+  const tc = useTranslations('settings.common')
   const { update: updateSession } = useSession()
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -25,7 +29,7 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [success, setSuccess] = useState(false)
 
   useEffect(() => {
     fetch('/api/profile')
@@ -41,14 +45,14 @@ export default function ProfilePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setSuccess('')
+    setSuccess(false)
 
     if (newPassword && newPassword !== confirmPassword) {
-      setError('Les mots de passe ne correspondent pas')
+      setError(t('passwordMismatch'))
       return
     }
     if (newPassword && newPassword.length < 8) {
-      setError('Le nouveau mot de passe doit faire au moins 8 caractères')
+      setError(t('passwordTooShort'))
       return
     }
 
@@ -68,86 +72,72 @@ export default function ProfilePage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error ?? 'Erreur lors de la sauvegarde')
+        setError(data.error ?? t('saveError'))
       } else {
-        setSuccess('Profil mis à jour')
+        setSuccess(true)
+        setTimeout(() => setSuccess(false), 2000)
         setCurrentPassword('')
         setNewPassword('')
         setConfirmPassword('')
         setProfile(data.data)
-        // Refresh session so displayed name updates
         await updateSession({ name: data.data.name })
       }
     } catch {
-      setError('Une erreur est survenue')
+      setError(t('genericError'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="p-8 max-w-lg">
-      <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
+    <SettingsPage width="lg">
+      <SettingsHeader icon={<User className="h-4 w-4" />} title={t('title')} description={t('description')} />
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Info section */}
-        <div className="border border-border rounded-lg p-5 space-y-4">
-          <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Informations</h2>
-
+        <SettingsSection title={t('infoSection')}>
           <div className="space-y-1.5">
             <Label>{t('name')}</Label>
-            <Input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              required
-            />
+            <Input value={name} onChange={e => setName(e.target.value)} required />
           </div>
 
           <div className="space-y-1.5">
             <Label>{t('email')}</Label>
-            <Input
-              value={profile?.email ?? ''}
-              disabled
-              className="opacity-60"
-            />
-            <p className="text-xs text-muted-foreground">{"L'adresse email ne peut pas être modifiée."}</p>
+            <Input value={profile?.email ?? ''} disabled className="opacity-60" />
+            <p className="text-xs text-muted-foreground">{t('emailLocked')}</p>
           </div>
 
           {profile?.role === 'admin' && (
-            <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-              Administrateur
-            </div>
+            <span className="inline-flex items-center rounded-full bg-violet-500/10 px-2.5 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+              {t('adminBadge')}
+            </span>
           )}
-        </div>
+        </SettingsSection>
 
-        {/* Password section */}
-        <div className="border border-border rounded-lg p-5 space-y-4">
-          <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">{t('password')}</h2>
-
+        <SettingsSection title={t('password')}>
           <div className="space-y-1.5">
-            <Label>Mot de passe actuel</Label>
+            <Label>{t('currentPassword')}</Label>
             <Input
               type="password"
               value={currentPassword}
               onChange={e => setCurrentPassword(e.target.value)}
-              placeholder="Requis pour changer le mot de passe"
+              placeholder={t('currentPasswordPlaceholder')}
               autoComplete="current-password"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label>Nouveau mot de passe</Label>
+            <Label>{t('newPassword')}</Label>
             <Input
               type="password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
-              placeholder="8 caractères minimum"
+              placeholder={t('newPasswordPlaceholder')}
               autoComplete="new-password"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label>Confirmer le nouveau mot de passe</Label>
+            <Label>{t('confirmPassword')}</Label>
             <Input
               type="password"
               value={confirmPassword}
@@ -155,19 +145,20 @@ export default function ProfilePage() {
               autoComplete="new-password"
             />
           </div>
-        </div>
+        </SettingsSection>
 
         {error && (
-          <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
-        )}
-        {success && (
-          <div className="p-3 rounded-lg bg-green-500/10 text-green-600 text-sm">{success}</div>
+          <div className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
         )}
 
-        <Button type="submit" disabled={saving}>
-          {saving ? '...' : t('save')}
-        </Button>
+        <SaveBar
+          submit
+          dirty
+          saving={saving}
+          saved={success}
+          labels={{ save: t('save'), saving: tc('saving'), saved: t('updated'), unsaved: tc('unsaved') }}
+        />
       </form>
-    </div>
+    </SettingsPage>
   )
 }

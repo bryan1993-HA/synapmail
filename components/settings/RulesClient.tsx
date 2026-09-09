@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
 import type {
   EmailRule, RuleCondition, RuleAction, RuleField,
   RuleOperator, RuleActionType, RuleTemplate,
@@ -835,34 +836,31 @@ export default function RulesClient({ prefill }: Props) {
   }
 
   return (
-    <div className="p-8 max-w-3xl">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Règles & Filtres</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Tri automatique · exécution toutes les 5 min sur les nouveaux emails
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap justify-end">
-          {/* Import/Export */}
-          <input ref={importRef} type="file" accept=".json" className="hidden"
-            onChange={e => e.target.files?.[0] && handleImport(e.target.files[0])} />
-          <Button size="sm" variant="outline" onClick={() => importRef.current?.click()}
-            className="gap-1.5 h-8 text-xs">
-            <Upload className="w-3.5 h-3.5" /> Importer
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleExport} className="gap-1.5 h-8 text-xs">
-            <Download className="w-3.5 h-3.5" /> JSON
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleExportSieve} className="gap-1.5 h-8 text-xs">
-            <FileCode2 className="w-3.5 h-3.5" /> Sieve
-          </Button>
-          <Button size="sm" onClick={startNew} className="gap-1.5 h-8 text-xs"
-            disabled={creating && !editing?.id}>
-            <Plus className="w-3.5 h-3.5" /> Nouvelle règle
-          </Button>
-        </div>
+    <SettingsPage width="3xl">
+      <SettingsHeader
+        icon={<Filter className="h-4 w-4" />}
+        title="Règles"
+        description="Tri automatique · exécution toutes les 5 min sur les nouveaux emails"
+      />
+
+      {/* Actions */}
+      <div className="mb-5 flex flex-wrap justify-end gap-2">
+        <input ref={importRef} type="file" accept=".json" className="hidden"
+          onChange={e => e.target.files?.[0] && handleImport(e.target.files[0])} />
+        <Button size="sm" variant="outline" onClick={() => importRef.current?.click()}
+          className="gap-1.5 h-8 text-xs">
+          <Upload className="w-3.5 h-3.5" /> Importer
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleExport} className="gap-1.5 h-8 text-xs">
+          <Download className="w-3.5 h-3.5" /> JSON
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleExportSieve} className="gap-1.5 h-8 text-xs">
+          <FileCode2 className="w-3.5 h-3.5" /> Sieve
+        </Button>
+        <Button size="sm" onClick={startNew} className="gap-1.5 h-8 text-xs"
+          disabled={creating && !editing?.id}>
+          <Plus className="w-3.5 h-3.5" /> Nouvelle règle
+        </Button>
       </div>
 
       {/* Account selector */}
@@ -1004,6 +1002,6 @@ export default function RulesClient({ prefill }: Props) {
           </div>
         </div>
       )}
-    </div>
+    </SettingsPage>
   )
 }

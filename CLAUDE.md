@@ -35,7 +35,11 @@ app/
     login/page.tsx              # Login page
     register/page.tsx           # Registration (admin-only after setup)
   (app)/
-    layout.tsx                  # App layout (requires auth) — three-column shell
+    layout.tsx                  # App layout (requires auth) — three-column shell + `modal` parallel slot
+    @modal/
+      default.tsx               # null (no modal by default)
+      (.)settings/page.tsx              # intercepts /settings → <SettingsModal>
+      (.)settings/[...segments]/page.tsx  # intercepts /settings/<sub> → <SettingsModal>
     dashboard/
       page.tsx                  # Server component (auth guard + Suspense)
       DashboardClient.tsx       # Client: bento command center (KPIs, activity chart, focus, receipts, scheduled, rules, follow-ups)
@@ -121,8 +125,11 @@ components/
     ScheduledPopover.tsx        # Popover listing pending scheduled emails with cancel
     SnoozePopover.tsx           # Toolbar popover listing snoozed messages + "move back to inbox"
   settings/
+    primitives.tsx              # Settings design system — SettingsPage/Header/Section/Row, Toggle, ChoiceCards, Chips, SaveBar (dashboard visual language, violet accent)
+    SettingsModal.tsx           # base-ui Dialog shell for the intercepted /settings route (nav rail + panel + close→router.back)
+    SettingsModalPanel.tsx      # path segment → settings leaf component (reuses the full-page components)
     RulesClient.tsx             # Rules page: form, drag-drop priority, test, stats
-    SettingsSidebar.tsx         # Settings navigation sidebar
+    SettingsSidebar.tsx         # Settings navigation sidebar (full-page fallback; violet active state, i18n via settings.nav)
   providers.tsx                 # React context providers
   ui/
     MessageContextMenu.tsx      # Right-click context menu (mark, star, move, delete)
@@ -423,6 +430,20 @@ snoozed_messages (id, user_id, account_id, folder, uid, subject, from_address, f
 - `initDb()` in `instrumentation.ts` ensures all tables exist at boot (idempotent)
 - Theme: next-themes cookie; Language: locale cookie → picked up by next-intl middleware on next request
 - `MailClient` reads settings via SWR `/api/settings`; `settingsPaneInitialized` ref prevents overwriting user's in-session toggle
+
+### Settings — modal (intercepting route) + full-page fallback
+- Soft-navigation to `/settings` or `/settings/<sub>` from inside the app opens the settings area as a **modal over the current page** (Gmail/Linear style). Hard load / direct visit / refresh renders the normal full page.
+- Mechanism: parallel slot `app/(app)/@modal` (declared in `app/(app)/layout.tsx` as the `modal` prop, `@modal/default.tsx` → `null`) + intercepting routes `@modal/(.)settings/page.tsx` and `@modal/(.)settings/[...segments]/page.tsx`, both rendering `<SettingsModal>`.
+- `components/settings/SettingsModal.tsx` = base-ui `Dialog` shell (centered ~1000px window, left nav rail / mobile top strip, ESC + backdrop close → `router.back()`). `SettingsModalPanel.tsx` maps the path segment to the **same leaf component** the full-page route uses (`AccountsClient`, `RulesClient`, `AISettingsClient`, and the `'use client'` `page.tsx` defaults) — server wrappers that only read searchParams / guard auth are bypassed (auth is enforced by the `(app)` layout; searchParams read via `useSearchParams`).
+- `app/(app)/settings/page.tsx` renders `<ProfilePage/>` directly (no `redirect()` — a redirect would promote the URL and double-render the full page under the modal). Known cost of the pattern: while the modal is open the matching full-page route still renders behind it (hidden); SWR dedupes the network.
+
+### Settings UI — design system (`components/settings/primitives.tsx`)
+- All config pages share the dashboard visual language: `rounded-2xl border bg-card/80 shadow-sm backdrop-blur-sm` cards, violet accent, icon-tile page headers, `motion-safe:animate-in` entrance.
+- Primitives are **i18n-free** — pages pass translated label props. Keys live under `settings.nav`, `settings.common`, `settings.{page}` in both locales.
+- `SaveBar` is the standard footer (sticky, dirty/saving/saved states). Pages compute `dirty` by diffing local state vs the SWR-loaded settings; `submit` variant drives a `<form>` (profile).
+- **Phase 1** (config pages on primitives + i18n): profile, appearance, reading, notifications, composition + SettingsSidebar. The `notifications` and `reading_pane` toggles were previously "Bientôt disponible" placeholders but were already wired (`useEmailNotifications`, `MailClient`) — now live.
+- **Phase 2** (CRUD pages on the shared frame): accounts, signatures, templates, contacts, rules (`RulesClient`), ai (`AISettingsClient`) now use `SettingsPage` + `SettingsHeader` (icon tile, violet accent) and the `rounded-2xl bg-card/80 shadow-sm` card / `bg-card shadow-sm` list-row style. Internal logic (Tiptap editors, drag-drop, wizard, rule editor) untouched. i18n of the CRUD page bodies is still partial (strings hardcoded FR pre-refonte) — separate follow-up.
+- Reference mockup: `claude.ai/code/artifact/b87828af-6602-445e-a0a2-40e786da638c`
 
 ### Dashboard / command center (`/dashboard`)
 - Renders inside `AppShell` (Sidebar + full-width content) — NOT the 3-column mail shell

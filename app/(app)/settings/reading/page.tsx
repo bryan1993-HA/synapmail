@@ -1,57 +1,27 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import useSWR from 'swr'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { BookOpen } from 'lucide-react'
+import {
+  SettingsPage, SettingsHeader, SettingsSection, SettingsRow, SettingsDivider,
+  Toggle, Chips, SaveBar,
+} from '@/components/settings/primitives'
 
 interface UserSettings {
-  theme: string
-  language: string
   messages_per_page: number
   thread_view: boolean
   reading_pane: boolean
-  notifications: boolean
-  undo_send_delay: number
   start_view: string
 }
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
-
 const PER_PAGE_OPTIONS = [10, 20, 30, 50, 100]
 
-function Toggle({ checked, onChange, label, description }: {
-  checked: boolean
-  onChange: (v: boolean) => void
-  label: string
-  description: string
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-      </div>
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={cn(
-          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200',
-          checked ? 'bg-primary' : 'bg-muted'
-        )}
-      >
-        <span
-          className={cn(
-            'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200',
-            checked ? 'translate-x-5' : 'translate-x-0'
-          )}
-        />
-      </button>
-    </div>
-  )
-}
-
 export default function ReadingPage() {
+  const t = useTranslations('settings.reading')
+  const tc = useTranslations('settings.common')
   const { data, mutate } = useSWR<{ data: UserSettings }>('/api/settings', fetcher)
   const settings = data?.data
 
@@ -70,6 +40,13 @@ export default function ReadingPage() {
       setStartOnDashboard(settings.start_view === 'dashboard')
     }
   }, [settings])
+
+  const dirty = !!settings && (
+    messagesPerPage !== settings.messages_per_page
+    || threadView !== settings.thread_view
+    || readingPane !== settings.reading_pane
+    || startOnDashboard !== (settings.start_view === 'dashboard')
+  )
 
   const handleSave = async () => {
     setSaving(true)
@@ -93,78 +70,40 @@ export default function ReadingPage() {
   }
 
   return (
-    <div className="p-8 max-w-lg">
-      <h1 className="text-2xl font-bold mb-1">Lecture</h1>
-      <p className="text-sm text-muted-foreground mb-8">Configurez l&apos;affichage de vos messages</p>
+    <SettingsPage width="lg">
+      <SettingsHeader icon={<BookOpen className="h-4 w-4" />} title={t('title')} description={t('description')} />
 
       <div className="space-y-6">
-        {/* Messages per page */}
-        <div className="border border-border rounded-xl p-5 space-y-4">
-          <div>
-            <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Messages par page</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Nombre de messages affichés dans la liste</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {PER_PAGE_OPTIONS.map(n => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setMessagesPerPage(n)}
-                className={cn(
-                  'px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all',
-                  messagesPerPage === n
-                    ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-border text-muted-foreground hover:border-border/80 hover:bg-accent/50 hover:text-foreground'
-                )}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Toggles */}
-        <div className="border border-border rounded-xl p-5 space-y-5">
-          <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Options d&apos;affichage</h2>
-          <Toggle
-            checked={threadView}
-            onChange={setThreadView}
-            label="Vue en fil de discussion"
-            description="Regrouper les messages par conversation (style Gmail)"
+        <SettingsSection title={t('perPage')} description={t('perPageDesc')}>
+          <Chips
+            value={messagesPerPage}
+            onChange={setMessagesPerPage}
+            options={PER_PAGE_OPTIONS.map(n => ({ value: n, label: n }))}
           />
-          <div className="border-t border-border" />
-          <Toggle
-            checked={startOnDashboard}
-            onChange={setStartOnDashboard}
-            label="Ouvrir sur le tableau de bord"
-            description="Afficher le centre de commande au lancement plutôt que la boîte de réception"
-          />
-          <div className="border-t border-border" />
-          <div className="opacity-60 pointer-events-none">
-            <Toggle
-              checked={readingPane}
-              onChange={setReadingPane}
-              label="Volet de lecture"
-              description="Afficher le contenu du message dans la colonne de droite"
-            />
-          </div>
-          <div className="-mt-3 mb-1">
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-              Bientôt disponible
-            </span>
-          </div>
-        </div>
+        </SettingsSection>
 
-        {success && (
-          <div className="p-3 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 text-sm">
-            Paramètres enregistrés
-          </div>
-        )}
+        <SettingsSection title={t('displayOptions')}>
+          <SettingsRow title={t('threadView')} description={t('threadViewDesc')}>
+            <Toggle checked={threadView} onChange={setThreadView} label={t('threadView')} />
+          </SettingsRow>
+          <SettingsDivider />
+          <SettingsRow title={t('readingPane')} description={t('readingPaneDesc')}>
+            <Toggle checked={readingPane} onChange={setReadingPane} label={t('readingPane')} />
+          </SettingsRow>
+          <SettingsDivider />
+          <SettingsRow title={t('startDashboard')} description={t('startDashboardDesc')}>
+            <Toggle checked={startOnDashboard} onChange={setStartOnDashboard} label={t('startDashboard')} />
+          </SettingsRow>
+        </SettingsSection>
 
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? 'Enregistrement…' : 'Enregistrer'}
-        </Button>
+        <SaveBar
+          dirty={dirty}
+          saving={saving}
+          saved={success}
+          onSave={handleSave}
+          labels={{ save: tc('save'), saving: tc('saving'), saved: tc('saved'), unsaved: tc('unsaved') }}
+        />
       </div>
-    </div>
+    </SettingsPage>
   )
 }

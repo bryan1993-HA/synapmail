@@ -6,10 +6,11 @@ import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Pencil, Trash2, Wifi } from 'lucide-react'
+import { Plus, Pencil, Trash2, Wifi, Mail } from 'lucide-react'
 import type { EmailAccount } from '@/types/account'
 import { AccountWizard } from './AccountWizard'
 import type { AccountFormData } from './AccountWizard'
+import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -161,28 +162,31 @@ export function AccountsClient({ initialError, initialSuccess }: Props) {
   // ── MODE : LISTE ─────────────────────────────────────────────────────────
   if (mode === 'list') {
     return (
-      <div className="p-8 max-w-2xl">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">{t('title')}</h1>
-          <div className="flex gap-2">
-            <a href="/api/oauth/microsoft">
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <svg className="w-4 h-4" viewBox="0 0 21 21" fill="none">
-                  <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-                  <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-                  <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-                  <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-                </svg>
-                Microsoft / Outlook
-              </Button>
-            </a>
-            <Button onClick={() => { setError(''); setMode('add') }} size="sm" className="gap-1.5">
-              <Plus className="w-4 h-4" /> {t('add')}
+      <SettingsPage width="2xl">
+        <SettingsHeader
+          icon={<Mail className="h-4 w-4" />}
+          title={t('title')}
+          description="Vos comptes IMAP / SMTP connectés à Synapmail"
+        />
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          <a href="/api/oauth/microsoft">
+            <Button size="sm" variant="outline" className="gap-1.5">
+              <svg className="w-4 h-4" viewBox="0 0 21 21" fill="none">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+              </svg>
+              Microsoft / Outlook
             </Button>
-          </div>
+          </a>
+          <Button onClick={() => { setError(''); setMode('add') }} size="sm" className="gap-1.5">
+            <Plus className="w-4 h-4" /> {t('add')}
+          </Button>
         </div>
 
-        {success && <div className="mb-4 p-3 rounded-lg bg-green-500/10 text-green-600 text-sm">{success}</div>}
+        {success && <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-sm">{success}</div>}
         {error && <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>}
 
         {!accounts?.length && (
@@ -192,16 +196,16 @@ export function AccountsClient({ initialError, initialSuccess }: Props) {
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {accounts?.map(account => (
-            <div key={account.id} className="flex items-center gap-3 p-4 rounded-lg border border-border">
-              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: account.color }} />
+            <div key={account.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: account.color }} />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">{account.name}</div>
                 <div className="text-xs text-muted-foreground">{account.email}</div>
               </div>
               {account.isDefault && (
-                <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{t('setDefault')}</span>
+                <span className="text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 px-2 py-0.5 rounded-full font-medium">{t('setDefault')}</span>
               )}
               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEdit(account)}>
                 <Pencil className="w-3.5 h-3.5" />
@@ -212,7 +216,7 @@ export function AccountsClient({ initialError, initialSuccess }: Props) {
             </div>
           ))}
         </div>
-      </div>
+      </SettingsPage>
     )
   }
 
@@ -236,9 +240,13 @@ export function AccountsClient({ initialError, initialSuccess }: Props) {
       setEditForm(f => f ? { ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value } : f)
 
     return (
-      <div className="p-8 max-w-2xl">
-        <form onSubmit={handleEditSave} className="border border-border rounded-xl p-6 space-y-4">
-          <h2 className="font-semibold">{t('edit')}</h2>
+      <SettingsPage width="2xl">
+        <SettingsHeader
+          icon={<Mail className="h-4 w-4" />}
+          title={t('edit')}
+          description={ef.email}
+        />
+        <form onSubmit={handleEditSave} className="space-y-4 rounded-2xl border border-border bg-card/80 p-5 shadow-sm backdrop-blur-sm">
           {error && <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>}
 
           <div className="grid grid-cols-2 gap-3">
@@ -287,7 +295,7 @@ export function AccountsClient({ initialError, initialSuccess }: Props) {
             <Button type="button" variant="outline" onClick={() => setMode('list')}>{t('cancel')}</Button>
           </div>
         </form>
-      </div>
+      </SettingsPage>
     )
   }
 

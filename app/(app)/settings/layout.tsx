@@ -9,7 +9,9 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     <div className="flex h-full overflow-hidden">
       <SettingsSidebar isAdmin={isAdmin} />
       <main className="flex-1 overflow-y-auto">
-        {children}
+        <div className="mx-auto w-full max-w-[900px]">
+          {children}
+        </div>
       </main>
     </div>
   )

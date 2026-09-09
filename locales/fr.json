@@ -152,6 +152,27 @@
     "accountsDesc": "Gérer vos comptes IMAP/SMTP",
     "profileDesc": "Nom, email, mot de passe",
     "signaturesDesc": "Gérer vos signatures email",
+    "nav": {
+      "backToMail": "Messagerie",
+      "profile": "Profil",
+      "appearance": "Apparence",
+      "reading": "Lecture",
+      "notifications": "Notifications",
+      "composition": "Composition",
+      "accounts": "Comptes",
+      "signatures": "Signatures",
+      "templates": "Templates",
+      "contacts": "Contacts",
+      "rules": "Règles",
+      "ai": "IA Copilot",
+      "admin": "Administration"
+    },
+    "common": {
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "saved": "Enregistré",
+      "unsaved": "Modifications non enregistrées"
+    },
     "accounts": {
       "title": "Comptes email",
       "add": "Ajouter un compte",
@@ -178,10 +199,24 @@
     },
     "profile": {
       "title": "Profil",
+      "description": "Votre nom, votre adresse et votre mot de passe",
       "name": "Nom",
       "email": "Email",
       "avatar": "Avatar",
+      "infoSection": "Informations",
+      "emailLocked": "L'adresse email ne peut pas être modifiée.",
+      "adminBadge": "Administrateur",
       "password": "Changer le mot de passe",
+      "currentPassword": "Mot de passe actuel",
+      "currentPasswordPlaceholder": "Requis pour changer le mot de passe",
+      "newPassword": "Nouveau mot de passe",
+      "newPasswordPlaceholder": "8 caractères minimum",
+      "confirmPassword": "Confirmer le nouveau mot de passe",
+      "passwordMismatch": "Les mots de passe ne correspondent pas",
+      "passwordTooShort": "Le nouveau mot de passe doit faire au moins 8 caractères",
+      "saveError": "Erreur lors de la sauvegarde",
+      "genericError": "Une erreur est survenue",
+      "updated": "Profil mis à jour",
       "save": "Enregistrer les modifications"
     },
     "signatures": {
@@ -195,11 +230,50 @@
     },
     "appearance": {
       "title": "Apparence",
+      "description": "Personnalisez l'affichage de Synapmail",
       "theme": "Thème",
+      "themeDesc": "Choisissez l'apparence de l'interface",
       "light": "Clair",
       "dark": "Sombre",
       "system": "Système",
-      "language": "Langue"
+      "language": "Langue",
+      "languageDesc": "Langue de l'interface (nécessite un rechargement)"
+    },
+    "reading": {
+      "title": "Lecture",
+      "description": "Configurez l'affichage de vos messages",
+      "perPage": "Messages par page",
+      "perPageDesc": "Nombre de messages affichés dans la liste",
+      "displayOptions": "Options d'affichage",
+      "threadView": "Vue en fil de discussion",
+      "threadViewDesc": "Regrouper les messages par conversation (style Gmail)",
+      "startDashboard": "Ouvrir sur le tableau de bord",
+      "startDashboardDesc": "Afficher le centre de commande au lancement plutôt que la boîte de réception",
+      "readingPane": "Volet de lecture",
+      "readingPaneDesc": "Afficher le contenu du message dans la colonne de droite par défaut"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "description": "Gérez les alertes pour les nouveaux messages",
+      "desktop": "Notifications bureau",
+      "toggleLabel": "Activer les notifications",
+      "toggleDesc": "Recevoir une alerte à l'arrivée d'un nouveau message",
+      "permGranted": "Le navigateur autorise les notifications.",
+      "permDenied": "Le navigateur a refusé les notifications. Modifiez les permissions dans les réglages de votre navigateur.",
+      "permDefault": "Le navigateur n'a pas encore autorisé les notifications.",
+      "allow": "Autoriser",
+      "hint": "Les notifications nécessitent l'autorisation du navigateur en plus de ce réglage."
+    },
+    "composition": {
+      "title": "Composition",
+      "description": "Options liées à la rédaction et à l'envoi",
+      "undoTitle": "Annulation d'envoi",
+      "undoDesc": "Après avoir cliqué sur « Envoyer », un toast apparaît avec un compte à rebours. Vous pouvez annuler pendant ce délai. Uniquement pour les envois immédiats.",
+      "disabled": "Désactivé",
+      "immediate": "Envoi immédiat",
+      "seconds": "{n} secondes",
+      "recommended": "Recommandé",
+      "undoHint": "Le modal se fermera immédiatement. Un toast « Envoi dans {n}s… Annuler » apparaîtra en bas de l'écran."
     },
     "rules": {
       "title": "Règles & Filtres",

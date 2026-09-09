@@ -1,10 +1,29 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useTranslations } from 'next-intl'
+import useSWR from 'swr'
 import { Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  SettingsPage, SettingsHeader, SettingsSection, SettingsRow, Toggle, SaveBar,
+} from '@/components/settings/primitives'
+
+interface UserSettings {
+  notifications: boolean
+}
+
+const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 export default function NotificationsPage() {
+  const t = useTranslations('settings.notifications')
+  const tc = useTranslations('settings.common')
+  const { data, mutate } = useSWR<{ data: UserSettings }>('/api/settings', fetcher)
+  const settings = data?.data
+
+  const [enabled, setEnabled] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [success, setSuccess] = useState(false)
   const [permissionState, setPermissionState] = useState<NotificationPermission | 'unsupported'>('default')
 
   useEffect(() => {
@@ -15,78 +34,85 @@ export default function NotificationsPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (settings) setEnabled(settings.notifications !== false)
+  }, [settings])
+
+  const dirty = !!settings && enabled !== (settings.notifications !== false)
+
   const requestPermission = async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) return
     const result = await Notification.requestPermission()
     setPermissionState(result)
   }
 
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      if (enabled && permissionState === 'default') {
+        await requestPermission()
+      }
+      await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications: enabled }),
+      })
+      await mutate()
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 2000)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <div className="p-8 max-w-lg">
-      <h1 className="text-2xl font-bold mb-1">Notifications</h1>
-      <p className="text-sm text-muted-foreground mb-8">Gérez les alertes pour les nouveaux messages</p>
+    <SettingsPage width="lg">
+      <SettingsHeader icon={<Bell className="h-4 w-4" />} title={t('title')} description={t('description')} />
 
       <div className="space-y-6">
-        {/* Desktop notifications */}
-        <div className="border border-border rounded-xl p-5 space-y-5">
-          <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Notifications bureau</h2>
+        <SettingsSection title={t('desktop')}>
+          <SettingsRow title={t('toggleLabel')} description={t('toggleDesc')}>
+            <Toggle checked={enabled} onChange={setEnabled} label={t('toggleLabel')} />
+          </SettingsRow>
 
-          {/* Toggle — non fonctionnel, câblage à venir */}
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3 flex-1">
-              <Bell className="w-5 h-5 text-muted-foreground mt-0.5 shrink-0" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-muted-foreground">Activer / Désactiver les notifications</p>
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                    Bientôt disponible
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Le contrôle on/off sera pris en compte dans une prochaine mise à jour
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled
-              className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-muted opacity-40"
-            >
-              <span className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm ring-0 translate-x-0" />
-            </button>
-          </div>
-
-          {/* Browser permission status */}
           {permissionState !== 'unsupported' && (
-            <div className={cn(
-              'rounded-lg px-4 py-3 text-sm',
-              permissionState === 'granted'
-                ? 'bg-green-500/10 text-green-700 dark:text-green-400'
-                : permissionState === 'denied'
-                ? 'bg-destructive/10 text-destructive'
-                : 'bg-muted text-muted-foreground'
-            )}>
-              {permissionState === 'granted' && 'Le navigateur autorise les notifications.'}
-              {permissionState === 'denied' && 'Le navigateur a refusé les notifications. Modifiez les permissions dans les réglages de votre navigateur.'}
+            <div
+              className={cn(
+                'rounded-lg px-4 py-3 text-sm',
+                permissionState === 'granted'
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                  : permissionState === 'denied'
+                    ? 'bg-destructive/10 text-destructive'
+                    : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {permissionState === 'granted' && t('permGranted')}
+              {permissionState === 'denied' && t('permDenied')}
               {permissionState === 'default' && (
                 <div className="flex items-center justify-between gap-3">
-                  <span>Le navigateur n&apos;a pas encore autorisé les notifications.</span>
+                  <span>{t('permDefault')}</span>
                   <button
                     onClick={requestPermission}
-                    className="text-xs font-medium underline underline-offset-2 hover:no-underline shrink-0"
+                    className="shrink-0 text-xs font-medium underline underline-offset-2 hover:no-underline"
                   >
-                    Autoriser
+                    {t('allow')}
                   </button>
                 </div>
               )}
             </div>
           )}
-        </div>
 
-        <p className="text-xs text-muted-foreground">
-          Pour activer les notifications, autorisez-les dans votre navigateur via le bouton ci-dessus.
-        </p>
+          <p className="text-xs text-muted-foreground">{t('hint')}</p>
+        </SettingsSection>
+
+        <SaveBar
+          dirty={dirty}
+          saving={saving}
+          saved={success}
+          onSave={handleSave}
+          labels={{ save: tc('save'), saving: tc('saving'), saved: tc('saved'), unsaved: tc('unsaved') }}
+        />
       </div>
-    </div>
+    </SettingsPage>
   )
 }

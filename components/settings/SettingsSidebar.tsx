@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import {
   User, Palette, BookOpen, Bell, PenSquare,
   Mail, FileSignature, ArrowLeft, ShieldCheck, Users, Filter, LayoutTemplate, Bot,
@@ -9,52 +10,52 @@ import {
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
-  { href: '/settings/profile',       label: 'Profil',        icon: User },
-  { href: '/settings/appearance',    label: 'Apparence',     icon: Palette },
-  { href: '/settings/reading',       label: 'Lecture',       icon: BookOpen },
-  { href: '/settings/notifications', label: 'Notifications', icon: Bell },
-  { href: '/settings/composition',   label: 'Composition',   icon: PenSquare },
-  { href: '/settings/accounts',      label: 'Comptes',       icon: Mail },
-  { href: '/settings/signatures',    label: 'Signatures',    icon: FileSignature },
-  { href: '/settings/templates',     label: 'Templates',     icon: LayoutTemplate },
-  { href: '/settings/contacts',      label: 'Contacts',      icon: Users },
-  { href: '/settings/rules',         label: 'Règles',        icon: Filter },
-  { href: '/settings/ai',            label: 'IA Copilot',    icon: Bot },
-]
+  { href: '/settings/profile',       key: 'profile',       icon: User },
+  { href: '/settings/appearance',    key: 'appearance',    icon: Palette },
+  { href: '/settings/reading',       key: 'reading',       icon: BookOpen },
+  { href: '/settings/notifications', key: 'notifications', icon: Bell },
+  { href: '/settings/composition',   key: 'composition',   icon: PenSquare },
+  { href: '/settings/accounts',      key: 'accounts',      icon: Mail },
+  { href: '/settings/signatures',    key: 'signatures',    icon: FileSignature },
+  { href: '/settings/templates',     key: 'templates',     icon: LayoutTemplate },
+  { href: '/settings/contacts',      key: 'contacts',      icon: Users },
+  { href: '/settings/rules',         key: 'rules',         icon: Filter },
+  { href: '/settings/ai',            key: 'ai',            icon: Bot },
+] as const
 
 export function SettingsSidebar({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname()
+  const t = useTranslations('settings.nav')
+
+  const linkClass = (active: boolean) =>
+    cn(
+      'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
+      active
+        ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium'
+        : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+    )
 
   return (
-    <aside className="w-56 shrink-0 border-r border-border bg-background flex flex-col h-full">
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-background">
       {/* Back to mail */}
-      <div className="px-3 pt-4 pb-3 border-b border-border">
+      <div className="border-b border-border px-3 pb-3 pt-4">
         <Link
           href="/mail"
-          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          <ArrowLeft className="w-4 h-4 shrink-0" />
-          <span>Messagerie</span>
+          <ArrowLeft className="h-4 w-4 shrink-0" />
+          <span>{t('backToMail')}</span>
         </Link>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
+        {NAV_ITEMS.map(({ href, key, icon: Icon }) => {
           const active = pathname.startsWith(href)
           return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
-                active
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-              )}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span>{label}</span>
+            <Link key={href} href={href} className={linkClass(active)}>
+              <Icon className="h-4 w-4 shrink-0" />
+              <span>{t(key)}</span>
             </Link>
           )
         })}
@@ -62,25 +63,17 @@ export function SettingsSidebar({ isAdmin }: { isAdmin: boolean }) {
         {isAdmin && (
           <>
             <div className="my-2 border-t border-border" />
-            <Link
-              href="/admin/users"
-              className={cn(
-                'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
-                pathname.startsWith('/admin')
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-              )}
-            >
-              <ShieldCheck className="w-4 h-4 shrink-0" />
-              <span>Administration</span>
+            <Link href="/admin/users" className={linkClass(pathname.startsWith('/admin'))}>
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              <span>{t('admin')}</span>
             </Link>
           </>
         )}
       </nav>
 
       {/* Footer */}
-      <div className="px-4 pb-4 pt-2 border-t border-border">
-        <p className="text-[10px] text-muted-foreground/50 tracking-wide uppercase">Synapmail</p>
+      <div className="border-t border-border px-4 pb-4 pt-2">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/50">Synapmail</p>
       </div>
     </aside>
   )

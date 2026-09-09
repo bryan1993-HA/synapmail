@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -239,21 +240,23 @@ export function AISettingsClient() {
   )
 
   return (
-    <div className="max-w-xl space-y-6 p-6">
-
-      {/* Header */}
-      <div className="flex items-center gap-2.5">
-        <Bot className="w-5 h-5 text-violet-500" />
-        <div>
-          <h1 className="text-base font-semibold">IA Copilot</h1>
-          <p className="text-xs text-muted-foreground">Choisissez votre modèle IA et sauvegardez.</p>
+    <SettingsPage width="xl">
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <SettingsHeader
+            icon={<Bot className="h-4 w-4" />}
+            title="IA Copilot"
+            description="Résumés, réponses suggérées et tri intelligent"
+          />
         </div>
         {settings?.configured && (
-          <span className="ml-auto flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+          <span className="mt-1 flex shrink-0 items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 className="w-3.5 h-3.5" /> Configuré
           </span>
         )}
       </div>
+
+      <div className="space-y-6">
 
       {/* Step 1 — Provider */}
       <div>
@@ -477,19 +480,20 @@ export function AISettingsClient() {
         )}
       </div>
 
-      {/* Coming soon */}
-      <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Prochainement</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          {COMING_SOON.map(({ icon: Icon, label }) => (
-            <div key={label} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/50 opacity-60">
-              <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              <span className="text-xs text-muted-foreground truncate">{label}</span>
-              <ComingSoonBadge />
-            </div>
-          ))}
+        {/* Coming soon */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Prochainement</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {COMING_SOON.map(({ icon: Icon, label }) => (
+              <div key={label} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/50 opacity-60">
+                <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground truncate">{label}</span>
+                <ComingSoonBadge />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </SettingsPage>
   )
 }
