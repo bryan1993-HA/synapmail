@@ -8,6 +8,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed
+- **Paramètres — refonte complète : coquille modale façon Gmail + design system partagé** (`components/settings/`, `app/(app)/@modal/`, `app/(app)/settings/`) :
+  - Navigation douce vers `/settings` ou `/settings/<sous-page>` depuis l'app → la zone Paramètres s'ouvre en **modale par-dessus la page courante** (style Gmail / Linear). Chargement direct / rafraîchissement → page pleine classique (fallback).
+  - Mécanisme : slot parallèle `app/(app)/@modal` + routes interceptrices `(.)settings` rendant `<SettingsModal>` ; `SettingsModalPanel` mappe le segment d'URL vers **le même composant feuille** que la route pleine page.
+  - Design system `components/settings/primitives.tsx` (`SettingsPage` / `SettingsHeader` / `SettingsSection` / `SettingsRow` / `Toggle` / `ChoiceCards` / `Chips` / `SaveBar`) alignant toutes les pages sur le langage visuel du tableau de bord — cartes `rounded-2xl` sur `bg-card/80` + `shadow-sm` + `backdrop-blur`, accent violet, en-têtes à pastille d'icône.
+  - Pages de config réécrites sur les primitives + i18n complète (`settings.nav` / `settings.common` / `settings.{reading,notifications,composition}`) : profil, apparence, lecture, notifications, composition. Sidebar restylée. Les bascules notifications / volet de lecture (ex-« Bientôt disponible ») sont désormais fonctionnelles.
+  - Pages CRUD (comptes, signatures, templates, contacts, règles, IA) reprises sur le cadre `SettingsPage` + `SettingsHeader` et le style de carte partagé ; logique interne inchangée.
 - **Fenêtre de composition — direction « Aurora » (verre dépoli sur aurore)** (`components/mail/ComposeModal.tsx`, `app/globals.css`) :
   - Fond : **aurore ambiante** (halos radiaux violet / fuchsia / cyan floutés, alpha ≤ 0,14) qui dérive lentement — `keyframes synap-aurora-drift`, gelé par `prefers-reduced-motion`. Elle n'apparaît que **dans la marge autour de la fenêtre**, sur un scrim `bg-background/80 backdrop-blur-lg` (arrière-plan de l'app flouté — le flou est sur le scrim, **jamais sur le panneau**, ce dernier point ayant rendu le corps illisible).
   - Panneau : **opaque** (`bg-card`, aucun `backdrop-blur`) — l'effet « verre » vient du liseré `ring-inset ring-white/25 dark:ring-white/[0.06]`, des coins `rounded-[24px]` et de la grande ombre douce. Contraste texte garanti en clair comme en sombre (pas de contenu de l'app qui transparaît).
