@@ -2,12 +2,14 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
-import { RefreshCw, Search, X, Paperclip, CheckSquare, Square, Trash2, Mail, MailOpen, MoveRight, ChevronDown, Eye, EyeOff } from 'lucide-react'
+import { RefreshCw, Search, X, Paperclip, CheckSquare, Square, Trash2, Mail, MailOpen, MoveRight, ChevronDown, Eye, EyeOff, Archive, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
 import type { Message, Folder, ReadReceipt } from '@/types/email'
 import { MessageContextMenu, type ContextMenuState } from '@/components/ui/MessageContextMenu'
 import { ScheduledPopover } from '@/components/mail/ScheduledPopover'
+import { SnoozePopover } from '@/components/mail/SnoozePopover'
+import { snoozePresets } from '@/lib/snooze-presets'
 
 const fetcher = async (url: string) => {
   const res = await fetch(url)
@@ -89,6 +91,11 @@ const groupIntoThreads = (messages: Message[]): ThreadGroup[] => {
   return threads
 }
 
+// ─── time bucketing (Direction B — grouped list) ──────────────────────────
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+
+type DensityMode = 'comfortable' | 'compact'
+
 interface Props {
   folder: string
   selectedUid: string | null
@@ -111,10 +118,28 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedThreadKey, setSelectedThreadKey] = useState<string | null>(null)
 
+  // Direction B — comfortable / compact density (per browser)
+  const [density, setDensity] = useState<DensityMode>('comfortable')
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('synapmail:mailDensity')
+      if (stored === 'compact' || stored === 'comfortable') setDensity(stored)
+    } catch { /* ignore */ }
+  }, [])
+  const changeDensity = (mode: DensityMode) => {
+    setDensity(mode)
+    try { localStorage.setItem('synapmail:mailDensity', mode) } catch { /* ignore */ }
+  }
+  const compact = density === 'compact'
+
   // Bulk selection
   const [checkedUids, setCheckedUids] = useState<Set<string>>(new Set())
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   const moveMenuRef = useRef<HTMLDivElement>(null)
+
+  // Per-row snooze menu
+  const [snoozeFor, setSnoozeFor] = useState<string | null>(null)
+  const snoozeRef = useRef<HTMLDivElement>(null)
 
   // Context menu
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -122,26 +147,29 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   // Drag state
   const [draggingUid, setDraggingUid] = useState<string | null>(null)
 
+  // Infinite scroll — sentinel + observer replace the "load more" button
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const loadingLockRef = useRef(0) // last page auto-requested — prevents re-firing while in flight
+
   const prevListKey = useRef(`${folder}|${activeAccountId ?? ''}`)
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const internalSearchRef = useRef<HTMLInputElement>(null)
   const effectiveSearchRef = searchInputRef ?? internalSearchRef
 
-  // Reset the accumulated list when either the folder OR the active account
-  // changes. Previously this only watched `folder`, so switching account on the
-  // same folder left the previous account's messages on screen (mixed with
-  // loading placeholders) until the new data arrived.
   useEffect(() => {
     const listKey = `${folder}|${activeAccountId ?? ''}`
     if (prevListKey.current !== listKey) {
       prevListKey.current = listKey
       setPage(1)
       setAccumulated([])
+      loadingLockRef.current = 0
       setReadUids(new Set())
       setSearchQuery('')
       setDebouncedSearch('')
       setSelectedThreadKey(null)
       setCheckedUids(new Set())
+      setSnoozeFor(null)
     }
   }, [folder, activeAccountId])
 
@@ -161,13 +189,27 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     return () => document.removeEventListener('mousedown', handler)
   }, [showMoveMenu])
 
+  // Close snooze menu when clicking outside / Escape
+  useEffect(() => {
+    if (!snoozeFor) return
+    const onDoc = (e: MouseEvent) => {
+      if (snoozeRef.current && !snoozeRef.current.contains(e.target as Node)) setSnoozeFor(null)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSnoozeFor(null) }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [snoozeFor])
+
   const { data: settingsData } = useSWR<{ data: AppSettings }>('/api/settings', fetcher)
   const threadView = settingsData?.data?.thread_view ?? true
   const perPage = settingsData?.data?.messages_per_page ?? 30
 
   const accountParam = activeAccountId ? `&account=${activeAccountId}` : ''
 
-  // Detect Sent folder (path may be "Sent", "INBOX.Sent", "[Gmail]/Sent Mail", etc.)
   const isSentFolder = /sent/i.test(folder)
 
   const { data, error, isValidating, mutate } = useSWR<{ messages: Message[]; total: number }>(
@@ -185,14 +227,19 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     fetcher
   )
 
-  // Folders for move menu / context menu — API returns { data: [...] }
+  // Folders — needed for the move menu, the context menu AND the row "Archive"
+  // quick action, so it is fetched whenever an account is active. The key is
+  // identical to the Sidebar's, so SWR serves it from one shared fetch.
   const { data: foldersResponse } = useSWR<{ data: Folder[] }>(
-    (showMoveMenu || contextMenu) && activeAccountId
-      ? `/api/folders?account=${activeAccountId}`
-      : null,
+    activeAccountId ? `/api/folders?account=${activeAccountId}` : null,
     fetcher
   )
-  const folders = foldersResponse?.data ?? []
+  const folders = useMemo(() => foldersResponse?.data ?? [], [foldersResponse])
+  // No RFC-6154 flag survives /api/folders, so fall back to name/path matching.
+  const archivePath = useMemo(
+    () => folders.find(f => /archives?\b/i.test(f.name) || /archives?\b/i.test(f.path))?.path ?? null,
+    [folders]
+  )
 
   useEffect(() => {
     if (!data?.messages) return
@@ -210,12 +257,30 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   const isSearchMode = debouncedSearch.length >= 2
   const messages = isSearchMode ? (searchData?.messages ?? []) : accumulated
   const total = data?.total ?? 0
-  // Distinguish a failed load from an empty folder: only treat it as an error
-  // when the list request failed AND there is nothing already displayed.
   const loadError = !isSearchMode && !!error && accumulated.length === 0
   const loading = isSearchMode ? (!searchData && isSearching) : (!data && !error)
 
-  // Tracking status for Sent folder — batch fetch by subject (avoids Outlook Message-ID rewrite)
+  // Infinite scroll — a failed page > 1 keeps the list but shows a retry button
+  const morePageError = !isSearchMode && !!error && accumulated.length > 0
+  const canLoadMore = !isSearchMode && !error && messages.length > 0 && messages.length < total
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!canLoadMore || !sentinel) return
+    const io = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting && !isValidating && loadingLockRef.current !== page) {
+          loadingLockRef.current = page
+          setPage(p => p + 1)
+        }
+      },
+      { root: scrollRef.current, rootMargin: '600px 0px' }
+    )
+    io.observe(sentinel)
+    return () => io.disconnect()
+  }, [canLoadMore, isValidating, page])
+
+  // Tracking status for Sent folder
   const sentSubjects = isSentFolder
     ? messages.map(m => m.subject).filter(Boolean).join('|||')
     : ''
@@ -231,7 +296,6 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
 
   const threads = useMemo<ThreadGroup[]>(() => {
     if (!threadView) {
-      // Mode liste plate — chaque message est son propre thread
       return [...messages]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .map(msg => ({
@@ -245,6 +309,28 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     }
     return groupIntoThreads(messages)
   }, [messages, threadView])
+
+  // Direction B — bucket threads by recency for sticky date headers.
+  const timeBucket = useCallback((iso: string): string => {
+    const days = Math.round((startOfDay(new Date()).getTime() - startOfDay(new Date(iso)).getTime()) / 86_400_000)
+    if (days <= 0) return t('grpToday')
+    if (days === 1) return t('grpYesterday')
+    if (days < 7) return t('grpThisWeek')
+    if (days < 30) return t('grpThisMonth')
+    return new Date(iso).toLocaleDateString([], { month: 'long', year: 'numeric' })
+  }, [t])
+
+  const groupedThreads = useMemo(() => {
+    if (isSearchMode) return [{ label: null as string | null, items: threads }]
+    const out: { label: string | null; items: ThreadGroup[] }[] = []
+    for (const thread of threads) {
+      const label = timeBucket(thread.lastMessage.date)
+      const last = out[out.length - 1]
+      if (last && last.label === label) last.items.push(thread)
+      else out.push({ label, items: [thread] })
+    }
+    return out
+  }, [threads, isSearchMode, timeBucket])
 
   const allVisibleUids = useMemo(() => threads.map(t => t.lastMessage.uid), [threads])
   const isAllChecked = allVisibleUids.length > 0 && allVisibleUids.every(uid => checkedUids.has(uid))
@@ -285,7 +371,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     return activeAccountId || ''
   }, [threads, checkedUids, activeAccountId])
 
-  // Bulk + single message API actions
+  // Single-message API actions
   const apiMarkRead = async (uid: string, accountId: string, read: boolean) => {
     await fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
       method: 'PATCH',
@@ -321,6 +407,59 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     })
     setAccumulated(prev => prev.filter(m => m.uid !== uid))
     mutate()
+  }
+
+  // Direction B — row quick actions (top-right corner)
+  const archiveThread = async (thread: ThreadGroup) => {
+    if (!archivePath) return
+    const accId = thread.lastMessage.accountId || activeAccountId || ''
+    const uids = thread.messages.map(m => m.uid)
+    await fetch('/api/messages/bulk', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uids, action: 'move', accountId: accId, folder, destination: archivePath }),
+    })
+    setAccumulated(prev => prev.filter(m => !uids.includes(m.uid)))
+    mutate()
+  }
+
+  const markThreadRead = async (thread: ThreadGroup, read: boolean) => {
+    const accId = thread.lastMessage.accountId || activeAccountId || ''
+    const uids = thread.messages.map(m => m.uid)
+    await fetch('/api/messages/bulk', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uids, action: read ? 'read' : 'unread', accountId: accId, folder }),
+    })
+    setAccumulated(prev => prev.map(m => uids.includes(m.uid) ? { ...m, isRead: read } : m))
+    setReadUids(prev => {
+      const next = new Set(prev)
+      uids.forEach(u => read ? next.add(u) : next.delete(u))
+      return next
+    })
+    mutate()
+  }
+
+  const snoozeThread = async (thread: ThreadGroup, until: Date) => {
+    const msg = thread.lastMessage
+    const accId = msg.accountId || activeAccountId || ''
+    const uids = thread.messages.map(m => m.uid)
+    await fetch(`/api/messages/${msg.uid}/snooze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        until: until.toISOString(),
+        folder,
+        accountId: accId,
+        subject: msg.subject,
+        fromAddress: msg.from.address,
+        fromName: msg.from.name,
+      }),
+    })
+    setSnoozeFor(null)
+    setAccumulated(prev => prev.filter(m => !uids.includes(m.uid)))
+    mutate()
+    window.dispatchEvent(new CustomEvent('synapmail:snooze-changed'))
   }
 
   const bulkMarkRead = async (read: boolean) => {
@@ -364,7 +503,6 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   const handleDragStart = useCallback((e: React.DragEvent, thread: ThreadGroup) => {
     const msg = thread.lastMessage
     const accId = msg.accountId || activeAccountId || ''
-    // If dragging a checked thread, carry all checked ones
     const uidsToMove = checkedUids.has(msg.uid) ? checkedThreadUids : thread.messages.map(m => m.uid)
     e.dataTransfer.setData('application/synapmail', JSON.stringify({
       uids: uidsToMove,
@@ -415,9 +553,165 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     })
   }
 
-  const handleRefresh = () => { setPage(1); setRefreshKey(k => k + 1); mutate() }
+  const handleRefresh = () => { setPage(1); loadingLockRef.current = 0; setRefreshKey(k => k + 1); mutate() }
   const clearSearch = () => { setSearchQuery(''); setDebouncedSearch('') }
   const hasSelection = checkedUids.size > 0
+
+  const renderRow = (thread: ThreadGroup) => {
+    const { lastMessage: msg, hasUnread, count } = thread
+    const isRead = !hasUnread || readUids.has(msg.uid)
+    const isSelected = selectedThreadKey === thread.key
+    const isChecked = checkedUids.has(msg.uid)
+    const isDragging = draggingUid === msg.uid
+    const initial = (msg.from.name || msg.from.address)[0]?.toUpperCase() ?? '?'
+    const avatarColor = isRead ? 'bg-muted text-muted-foreground' : cn(getAvatarColor(msg.from.address), 'text-white')
+
+    return (
+      <div
+        key={thread.key}
+        draggable
+        onDragStart={e => handleDragStart(e, thread)}
+        onDragEnd={handleDragEnd}
+        onContextMenu={e => handleContextMenu(e, thread)}
+        className={cn(
+          'group/row relative w-full text-left grid grid-cols-[auto_1fr] gap-3 border-b border-border/40 transition-colors duration-150 border-l-[3px] cursor-pointer select-none',
+          compact ? 'px-3 py-2' : 'px-4 py-3',
+          isDragging && 'opacity-40',
+          isChecked ? 'bg-primary/10 border-l-primary'
+            : isSelected ? 'bg-primary/10 border-l-primary'
+            : !isRead ? 'border-l-primary hover:bg-muted/50 bg-blue-50/60 dark:bg-blue-950/20'
+            : 'border-l-transparent hover:bg-muted/50'
+        )}
+        onClick={() => handleSelectThread(thread)}
+      >
+        {/* Avatar / Checkbox */}
+        <div
+          className={cn('relative shrink-0 group/avatar', compact ? 'w-7 h-7' : 'w-9 h-9')}
+          onClick={e => toggleUid(msg.uid, e)}
+        >
+          {isChecked ? (
+            <div className="w-full h-full rounded-full flex items-center justify-center bg-primary/10 text-primary">
+              <CheckSquare className="w-4 h-4" />
+            </div>
+          ) : (
+            <>
+              <div className={cn(
+                'w-full h-full rounded-full flex items-center justify-center font-semibold group-hover/avatar:opacity-0 transition-opacity',
+                compact ? 'text-xs' : 'text-sm',
+                avatarColor,
+              )}>
+                {initial}
+              </div>
+              <div className="absolute inset-0 rounded-full flex items-center justify-center bg-muted/60 opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+                <Square className="w-4 h-4 text-muted-foreground" />
+              </div>
+            </>
+          )}
+          {count > 1 && !isChecked && (
+            <span className="absolute -bottom-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center leading-none shadow-sm">
+              {count}
+            </span>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          {/* line 1 — sender + date, right padding reserves the corner-action strip */}
+          <div className={cn('flex items-baseline justify-between gap-2', archivePath ? 'pr-[104px]' : 'pr-[80px]', compact ? '' : 'mb-0.5')}>
+            <span className={cn('text-sm truncate', !isRead ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground')}>
+              {count > 1
+                ? thread.messages.map(m => m.from.name || m.from.address.split('@')[0]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 3).join(', ')
+                : (msg.from.name || msg.from.address)
+              }
+            </span>
+            <div className="flex items-center gap-1 shrink-0">
+              {thread.messages.some(m => m.hasAttachments) && <Paperclip className="w-3 h-3 text-muted-foreground" />}
+              {isSentFolder && (() => {
+                const receipt = trackingMap[msg.subject]
+                if (!receipt) return null
+                return receipt.opened ? (
+                  <span title={receipt.openedAt ? `Lu le ${new Date(receipt.openedAt).toLocaleString()}` : 'Lu'}>
+                    <Eye className="w-3 h-3 text-emerald-500" />
+                  </span>
+                ) : (
+                  <span title="Non ouvert"><EyeOff className="w-3 h-3 text-muted-foreground/50" /></span>
+                )
+              })()}
+              <span className={cn('text-xs tabular-nums', !isRead ? 'text-primary font-medium' : 'text-muted-foreground')}>
+                {formatDate(msg.date)}
+              </span>
+            </div>
+          </div>
+
+          {/* line 2 — subject (full width) */}
+          <div className={cn('text-xs truncate', !isRead ? 'font-semibold text-foreground' : 'text-foreground/60', compact ? '' : 'mb-0.5')}>
+            {thread.subject}
+          </div>
+
+          {/* line 3 — preview (hidden in compact) */}
+          {!compact && (
+            <div className={cn('text-[11px] truncate leading-relaxed', isRead ? 'text-muted-foreground/70' : 'text-muted-foreground')}>
+              {msg.preview}
+            </div>
+          )}
+        </div>
+
+        {/* corner actions — always visible, out of the text flow */}
+        <div className="absolute top-1.5 right-2 flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+          {archivePath && (
+            <button
+              onClick={() => archiveThread(thread)}
+              title={t('archiveAction')}
+              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <Archive className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => markThreadRead(thread, !isRead)}
+            title={isRead ? t('markUnread') : t('markDone')}
+            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            {isRead ? <Mail className="w-3.5 h-3.5" /> : <MailOpen className="w-3.5 h-3.5" />}
+          </button>
+          <button
+            onClick={() => apiDelete(msg.uid, msg.accountId || activeAccountId || '')}
+            title={t('delete')}
+            className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <div className="relative" ref={snoozeFor === thread.key ? snoozeRef : undefined}>
+            <button
+              onClick={() => setSnoozeFor(snoozeFor === thread.key ? null : thread.key)}
+              title={t('snooze')}
+              className={cn(
+                'w-6 h-6 flex items-center justify-center rounded transition-colors',
+                snoozeFor === thread.key ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+              )}
+            >
+              <Clock className="w-3.5 h-3.5" />
+            </button>
+            {snoozeFor === thread.key && (
+              <div className="absolute right-0 top-7 z-50 w-44 bg-popover border border-border rounded-lg shadow-xl py-1">
+                {snoozePresets().map(p => (
+                  <button
+                    key={p.key}
+                    onClick={() => snoozeThread(thread, p.date)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
+                  >
+                    <span>{t(p.key)}</span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      {p.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full bg-background border-r border-border">
@@ -443,7 +737,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
 
       {/* Toolbar */}
       {hasSelection ? (
-        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border shrink-0 bg-primary/5">
+        <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-border shrink-0 bg-primary/5">
           <button
             onClick={toggleAll}
             className="w-7 h-7 flex items-center justify-center rounded text-primary hover:bg-primary/10 transition-colors"
@@ -457,8 +751,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
             }
           </button>
           <span className="text-xs text-primary font-medium mr-1">{checkedUids.size}</span>
-          <div className="flex-1" />
-          <button onClick={() => bulkMarkRead(true)} title={t('markRead')} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+          <button onClick={() => bulkMarkRead(true)} title={t('markRead')} className="ml-auto w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
             <MailOpen className="w-3.5 h-3.5" />
           </button>
           <button onClick={() => bulkMarkRead(false)} title={t('markUnread')} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
@@ -488,20 +781,29 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
           </button>
         </div>
       ) : !isSearchMode ? (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border shrink-0">
           <div className="flex rounded-lg overflow-hidden border border-border text-xs font-medium">
             {(['all', 'unread'] as const).map(f => (
-              <button key={f} onClick={() => { setFilter(f); setPage(1); setAccumulated([]) }}
+              <button key={f} onClick={() => { setFilter(f); setPage(1); setAccumulated([]); loadingLockRef.current = 0 }}
                 className={cn('px-3 py-1.5 transition-colors', filter === f ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent')}>
                 {t(f)}
               </button>
             ))}
           </div>
-          <div className="flex-1" />
-          <button onClick={handleRefresh} disabled={isValidating} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+          <div className="flex rounded-lg overflow-hidden border border-border text-xs font-medium">
+            {(['comfortable', 'compact'] as const).map(d => (
+              <button key={d} onClick={() => changeDensity(d)}
+                title={d === 'comfortable' ? t('densityComfortable') : t('densityCompact')}
+                className={cn('px-2.5 py-1.5 transition-colors', density === d ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent')}>
+                {d === 'comfortable' ? t('densityComfortable') : t('densityCompact')}
+              </button>
+            ))}
+          </div>
+          <button onClick={handleRefresh} disabled={isValidating} className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
             <RefreshCw className={cn('w-3.5 h-3.5', isValidating && 'animate-spin')} />
           </button>
           <ScheduledPopover />
+          <SnoozePopover activeAccountId={activeAccountId} />
         </div>
       ) : (
         <div className="px-4 py-2 border-b border-border shrink-0">
@@ -512,7 +814,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
       )}
 
       {/* Thread List */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {loading && (
           <div className="space-y-0">
             {[...Array(8)].map((_, i) => (
@@ -553,116 +855,46 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
           </div>
         )}
 
-        {threads.map(thread => {
-          const { lastMessage: msg, hasUnread, count } = thread
-          const isRead = !hasUnread || readUids.has(msg.uid)
-          const isSelected = selectedThreadKey === thread.key
-          const isChecked = checkedUids.has(msg.uid)
-          const isDragging = draggingUid === msg.uid
-          const initial = (msg.from.name || msg.from.address)[0]?.toUpperCase() ?? '?'
-          const avatarColor = getAvatarColor(msg.from.address)
+        {groupedThreads.map((group, gi) => (
+          <div key={group.label ?? `g${gi}`}>
+            {group.label && (
+              <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border/40">
+                {group.label}
+              </div>
+            )}
+            {group.items.map(renderRow)}
+          </div>
+        ))}
 
-          return (
-            <div
-              key={thread.key}
-              draggable
-              onDragStart={e => handleDragStart(e, thread)}
-              onDragEnd={handleDragEnd}
-              onContextMenu={e => handleContextMenu(e, thread)}
-              className={cn(
-                'group/row w-full text-left flex gap-3 px-4 py-3 border-b border-border/40 transition-colors duration-150 border-l-[3px] cursor-pointer select-none',
-                isDragging && 'opacity-40',
-                isChecked ? 'bg-primary/10 border-l-primary'
-                  : isSelected ? 'bg-primary/10 border-l-primary'
-                  : !isRead ? 'border-l-primary hover:bg-muted/50 bg-blue-50/60 dark:bg-blue-950/20'
-                  : 'border-l-transparent hover:bg-muted/50'
+        {!isSearchMode && messages.length > 0 && (
+          messages.length < total ? (
+            <div ref={sentinelRef} className="px-4 py-4">
+              {morePageError ? (
+                <button
+                  onClick={() => { loadingLockRef.current = 0; mutate() }}
+                  className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
+                >
+                  {t('retry')}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={isValidating}
+                  className="w-full flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {isValidating ? (
+                    <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> {t('loadingMore')}</>
+                  ) : (
+                    t('messagesRemaining', { count: total - messages.length })
+                  )}
+                </button>
               )}
-              onClick={() => handleSelectThread(thread)}
-            >
-              {/* Avatar / Checkbox */}
-              <div className="relative shrink-0 group/avatar" onClick={e => toggleUid(msg.uid, e)}>
-                {isChecked ? (
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center bg-primary/10 text-primary">
-                    <CheckSquare className="w-4.5 h-4.5" />
-                  </div>
-                ) : (
-                  <>
-                    <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold group-hover/avatar:opacity-0 transition-opacity', avatarColor)}>
-                      {initial}
-                    </div>
-                    <div className="absolute inset-0 w-9 h-9 rounded-full flex items-center justify-center bg-muted/60 opacity-0 group-hover/avatar:opacity-100 transition-opacity">
-                      <Square className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                  </>
-                )}
-                {count > 1 && !isChecked && (
-                  <span className="absolute -bottom-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center leading-none shadow-sm">
-                    {count}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline justify-between gap-2 mb-0.5">
-                  <span className={cn('text-sm truncate', !isRead ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground')}>
-                    {count > 1
-                      ? thread.messages.map(m => m.from.name || m.from.address.split('@')[0]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 3).join(', ')
-                      : (msg.from.name || msg.from.address)
-                    }
-                  </span>
-                  <div className="flex items-center shrink-0">
-                    {/* Quick actions — shown on hover */}
-                    <div className="hidden group-hover/row:flex items-center gap-0.5 mr-0.5">
-                      <button
-                        onClick={e => { e.stopPropagation(); apiDelete(msg.uid, msg.accountId || activeAccountId || '') }}
-                        className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); apiMarkRead(msg.uid, msg.accountId || activeAccountId || '', !isRead) }}
-                        className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        title={isRead ? 'Marquer non lu' : 'Marquer lu'}
-                      >
-                        {isRead ? <Mail className="w-3.5 h-3.5" /> : <MailOpen className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                    {/* Date + paperclip + tracking — hidden on hover */}
-                    <div className="flex items-center gap-1 group-hover/row:hidden">
-                      {thread.messages.some(m => m.hasAttachments) && <Paperclip className="w-3 h-3 text-muted-foreground" />}
-                      {isSentFolder && (() => {
-                        const receipt = trackingMap[msg.subject]
-                        if (!receipt) return null
-                        return receipt.opened ? (
-                          <span title={receipt.openedAt ? `Lu le ${new Date(receipt.openedAt).toLocaleString()}` : 'Lu'}>
-                            <Eye className="w-3 h-3 text-emerald-500" />
-                          </span>
-                        ) : (
-                          <span title="Non ouvert">
-                            <EyeOff className="w-3 h-3 text-muted-foreground/50" />
-                          </span>
-                        )
-                      })()}
-                      <span className={cn('text-xs tabular-nums', !isRead ? 'text-primary font-medium' : 'text-muted-foreground')}>
-                        {formatDate(msg.date)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className={cn('text-xs truncate mb-0.5', !isRead ? 'font-semibold text-foreground' : 'text-foreground/70')}>
-                  {thread.subject}
-                </div>
-                <div className="text-[11px] text-muted-foreground truncate leading-relaxed">{msg.preview}</div>
-              </div>
+            </div>
+          ) : (
+            <div className="py-4 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+              {t('endOfList')}
             </div>
           )
-        })}
-
-        {!isSearchMode && messages.length > 0 && messages.length < total && (
-          <button onClick={() => setPage(p => p + 1)} disabled={isValidating} className="w-full py-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-            {isValidating ? 'Chargement…' : `Charger plus (${total - messages.length} restants)`}
-          </button>
         )}
       </div>
 

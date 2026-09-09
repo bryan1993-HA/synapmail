@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import {
   Mail, Send, FileText, AlertTriangle, Trash2,
   Settings, PenSquare, Folder, Archive, X, ChevronDown, ChevronLeft, ChevronRight, RefreshCw,
+  LayoutDashboard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
@@ -136,7 +137,11 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
   // ─── COLLAPSED MODE ──────────────────────────────────────────────────────────
   if (collapsed) {
     return (
-      <div className="flex flex-col h-full items-center py-3 gap-1">
+      <div className="relative flex flex-col h-full items-center py-3 gap-1 overflow-hidden bg-gradient-to-b from-zinc-900 via-zinc-950 to-black">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 -top-8 h-48 bg-[radial-gradient(70%_100%_at_50%_0%,rgba(124,108,246,0.16),transparent_75%)]"
+        />
         {/* Logo */}
         <div className="mb-2">
           <img src="/brand/svg/synapmail-icone-negatif.svg" alt="Synapmail" className="w-7 h-7" />
@@ -155,10 +160,24 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
         <button
           onClick={dispatchCompose}
           title={t('compose')}
-          className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-500 hover:bg-blue-400 text-white transition-all shadow-lg shadow-blue-500/25 mb-2 shrink-0"
+          className="w-10 h-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 hover:brightness-110 text-white transition-all shadow-lg shadow-violet-500/30 mb-2 shrink-0"
         >
           <PenSquare className="w-4 h-4" />
         </button>
+
+        {/* Dashboard */}
+        <Link
+          href="/dashboard"
+          title={t('dashboard')}
+          className={cn(
+            'flex items-center justify-center w-full h-9 rounded-lg transition-all mb-1',
+            pathname.startsWith('/dashboard')
+              ? 'bg-violet-500/15 text-white ring-1 ring-inset ring-violet-500/20'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06]'
+          )}
+        >
+          <LayoutDashboard className={cn('w-4 h-4', pathname.startsWith('/dashboard') && 'text-violet-300')} />
+        </Link>
 
         {/* Nav icons */}
         <nav className="flex-1 w-full px-1.5 space-y-0.5 overflow-y-auto">
@@ -192,15 +211,15 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
                 className={cn(
                   'flex items-center justify-center w-full h-9 rounded-lg transition-all relative',
                   isDragOver
-                    ? 'bg-blue-500/30 ring-1 ring-blue-400 text-white'
+                    ? 'bg-violet-500/25 ring-1 ring-inset ring-violet-400/50 text-white'
                     : isActive
-                      ? 'bg-white/15 text-white'
-                      : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/8'
+                      ? 'bg-violet-500/15 text-white ring-1 ring-inset ring-violet-500/20'
+                      : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06]'
                 )}
               >
-                <Icon className={cn('w-4 h-4', isActive && 'text-blue-400')} />
+                <Icon className={cn('w-4 h-4', isActive && 'text-violet-300')} />
                 {unread > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-400" />
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-violet-400" />
                 )}
               </Link>
             )
@@ -226,10 +245,10 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
                     className={cn(
                       'flex items-center justify-center w-full h-9 rounded-lg transition-all',
                       isDragOver
-                        ? 'bg-blue-500/30 ring-1 ring-blue-400 text-white'
+                        ? 'bg-violet-500/25 ring-1 ring-inset ring-violet-400/50 text-white'
                         : isActive
-                          ? 'bg-white/15 text-white'
-                          : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/8'
+                          ? 'bg-violet-500/15 text-white ring-1 ring-inset ring-violet-500/20'
+                          : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06]'
                     )}
                   >
                     <Folder className="w-3.5 h-3.5" />
@@ -247,14 +266,14 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
             href="/settings"
             onClick={() => handleFolderClick()}
             title={t('settings')}
-            className="flex items-center justify-center w-full h-9 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/8 transition-all"
+            className="flex items-center justify-center w-full h-9 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] transition-all"
           >
             <Settings className="w-4 h-4" />
           </Link>
           <button
             onClick={onToggleCollapse}
             title="Agrandir la barre latérale"
-            className="flex items-center justify-center w-full h-9 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/8 transition-all"
+            className="flex items-center justify-center w-full h-9 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] transition-all"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -265,7 +284,11 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
 
   // ─── EXPANDED MODE ───────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full overflow-hidden bg-gradient-to-b from-zinc-900 via-zinc-950 to-black">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 -top-10 h-56 bg-[radial-gradient(65%_100%_at_50%_0%,rgba(124,108,246,0.15),transparent_75%)]"
+      />
       {/* Header */}
       <div className="flex items-center gap-2.5 px-5 py-5">
         <img
@@ -297,14 +320,14 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
         <div className="px-3 mb-2">
           <button
             onClick={() => setAccountOpen(o => !o)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/8 transition-colors text-sm"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-colors text-sm"
           >
             <div className={cn('w-5 h-5 rounded-full shrink-0', ACCOUNT_COLORS[accountColorIdx])} />
             <span className="text-zinc-200 truncate flex-1 text-left">{activeAccount.email}</span>
             <ChevronDown className={cn('w-3.5 h-3.5 text-zinc-500 transition-transform shrink-0', accountOpen && 'rotate-180')} />
           </button>
           {accountOpen && (
-            <div className="mt-1 rounded-lg overflow-hidden border border-white/10 bg-zinc-800">
+            <div className="mt-1 rounded-lg overflow-hidden border border-white/10 bg-zinc-900">
               {accounts.map((acc, idx) => (
                 <button
                   key={acc.id}
@@ -312,8 +335,8 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
                   className={cn(
                     'w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-left',
                     acc.id === activeAccount?.id
-                      ? 'bg-white/10 text-white'
-                      : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/8'
+                      ? 'bg-violet-500/15 text-white'
+                      : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06]'
                   )}
                 >
                   <div className={cn('w-4 h-4 rounded-full shrink-0', ACCOUNT_COLORS[idx % ACCOUNT_COLORS.length])} />
@@ -329,11 +352,28 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
       <div className="px-3 mb-4">
         <button
           onClick={dispatchCompose}
-          className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-400 text-white text-sm font-semibold transition-all shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 active:scale-[0.98]"
+          className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 hover:brightness-110 text-white text-sm font-semibold transition-all shadow-lg shadow-violet-500/30 hover:shadow-violet-500/45 active:scale-[0.98]"
         >
           <PenSquare className="w-4 h-4" />
           {t('compose')}
         </button>
+      </div>
+
+      {/* Dashboard */}
+      <div className="px-2 mb-1">
+        <Link
+          href="/dashboard"
+          onClick={() => handleFolderClick()}
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
+            pathname.startsWith('/dashboard')
+              ? 'bg-violet-500/15 text-white font-medium ring-1 ring-inset ring-violet-500/20'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06]'
+          )}
+        >
+          <LayoutDashboard className={cn('w-4 h-4 shrink-0', pathname.startsWith('/dashboard') && 'text-violet-300')} />
+          <span className="flex-1">{t('dashboard')}</span>
+        </Link>
       </div>
 
       {/* Main folders */}
@@ -374,18 +414,18 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
                 isDragOver
-                  ? 'bg-blue-500/30 ring-1 ring-blue-400 text-white'
+                  ? 'bg-violet-500/25 ring-1 ring-inset ring-violet-400/50 text-white'
                   : isActive
-                    ? 'bg-white/15 text-white font-medium'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/8'
+                    ? 'bg-violet-500/15 text-white font-medium ring-1 ring-inset ring-violet-500/20'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06]'
               )}
             >
-              <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-blue-400' : '')} />
+              <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-violet-300' : '')} />
               <span className="flex-1">{label ? t(label) : folder.name}</span>
               {unread > 0 && (
                 <span className={cn(
                   'text-[11px] font-semibold min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center',
-                  isActive ? 'bg-white/20 text-white' : 'bg-blue-500/20 text-blue-400'
+                  isActive ? 'bg-white/20 text-white' : 'bg-violet-500/20 text-violet-300'
                 )}>
                   {unread > 99 ? '99+' : unread}
                 </span>
@@ -415,10 +455,10 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
                   className={cn(
                     'flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-all',
                     isDragOver
-                      ? 'bg-blue-500/30 ring-1 ring-blue-400 text-white'
+                      ? 'bg-violet-500/25 ring-1 ring-inset ring-violet-400/50 text-white'
                       : isActive
-                        ? 'bg-white/15 text-white font-medium'
-                        : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/8'
+                        ? 'bg-violet-500/15 text-white font-medium ring-1 ring-inset ring-violet-500/20'
+                        : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06]'
                   )}
                 >
                   <Folder className="w-3.5 h-3.5 shrink-0" />
@@ -439,7 +479,7 @@ export function Sidebar({ onClose, collapsed, onToggleCollapse }: SidebarProps) 
         <Link
           href="/settings"
           onClick={() => handleFolderClick()}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-zinc-200 hover:bg-white/8 transition-all"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] transition-all"
         >
           <Settings className="w-4 h-4" />
           {t('settings')}

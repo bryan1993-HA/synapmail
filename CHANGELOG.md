@@ -5,9 +5,74 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.4.0] — 2026-09-09 — Vue Mail « Tri & focus » (Direction B)
 
-- t4 — Snooze messages (postpone email to a chosen date/time)
+Refonte de la présentation de la liste des messages et de l'état vide du volet de lecture,
+issue de la maquette « Direction B ». Conserve le langage visuel du tableau de bord tout en
+restant lisible pour le tri quotidien.
+
+### Added
+- **Regroupement par date** dans la liste — en-têtes collants « Aujourd'hui / Hier / 7 derniers jours / Ce mois-ci / mois AAAA », dérivés de la date du dernier message du fil. Désactivé en mode recherche. (`components/layout/MessageList.tsx`)
+- **Bascule de densité Confort / Compact** dans la barre d'outils. Compact : lignes plus serrées, avatars réduits, ligne d'aperçu masquée. Mémorisée par navigateur (`localStorage: synapmail:mailDensity`).
+- **Actions de ligne au coin haut-droit** — toujours visibles, hors du flux du sujet (l'objet et l'aperçu gardent toute la largeur) : Archiver (si un dossier d'archive est détecté), Marquer traité / non lu, Supprimer, Reporter. Remplacent les actions au survol.
+- **Snooze / Reporter un message** — menu de présélections par ligne (Plus tard +3 h, Ce soir 18 h, Demain matin 8 h, Ce week-end, Semaine prochaine ; les présélections passées sont masquées). Le message disparaît de la liste et de la heuristique « À traiter » jusqu'à l'échéance, puis réapparaît.
+  - Table `snoozed_messages` (`initDb`, idempotent) — `UNIQUE(account_id, folder, uid)`, index sur `snooze_until`.
+  - `POST /api/messages/[id]/snooze` (UPSERT) + `DELETE …/snooze` (annuler).
+  - `GET /api/snoozed?account=` — liste des reports en attente.
+  - `GET /api/messages` filtre les UID reportés non échus (et corrige `total`).
+  - `processSnoozes()` dans le scheduler — purge les reports échus toutes les 60 s ; le message revient à la prochaine synchro de la liste (poll 60 s).
+  - **Popover « Reportés »** dans la barre d'outils (à côté des envois programmés), avec « Remettre dans la boîte ». (`components/mail/SnoozePopover.tsx`)
+- **État vide du volet de lecture = liste « À traiter »** — reprend l'heuristique du tableau de bord (facture / échéance / réponse / contact clé / fréquent / suivi / pièce jointe), cliquable (ouvre le message via l'évènement `synapmail:open-message`). Légende clavier condensée en dessous.
+  - `GET /api/focus?account=` — liste focus légère (une requête scoping au lieu de l'agrégation complète du dashboard).
+  - `lib/focus.ts` — heuristique de scoring (`scoreFocus`, regex) extraite et partagée entre `/api/dashboard` et `/api/focus` ; `getFocusItems()` autonome (exclut les messages reportés).
+- Bloc de traductions `mail.*` : `search`, `grp*`, `density*`, `archiveAction`, `markDone`, `snooze*`, `snoozed*`, `unsnooze`, `focusTitle`, `focusEmpty`, `reason_*` dans `locales/{fr,en}.json`.
+
+### Changed
+- **Liste des messages — défilement infini.** Le bouton « Charger plus » est remplacé par une sentinelle observée (`IntersectionObserver`, `rootMargin: 600px`, `root` = conteneur scrollable) qui incrémente la page automatiquement avant d'atteindre le bas. Un verrou (`loadingLockRef`) garantit une seule page en vol à la fois — l'enchaînement s'arrête quand le viewport est rempli ou que `total` est atteint. La sentinelle reste un `<button>` cliquable (repli clavier / si l'observer échoue), affiche « {count} message(s) restant(s) » ou un spinner « Chargement… », un bouton « Réessayer » si une page > 1 échoue, et « Fin de la liste » une fois tout chargé. Désactivé en mode recherche. Le verrou est réinitialisé sur changement de dossier/compte, de filtre et au rafraîchissement manuel. (`components/layout/MessageList.tsx`, clés `mail.loadingMore` / `mail.messagesRemaining` / `mail.endOfList`)
+- **Lignes de la liste** — passage de `flex` à une grille `[avatar] [contenu]` avec `position: relative` pour ancrer les actions. Avatars : couleur (roue de hash) pour les non-lus, neutre `bg-muted` pour les lus. Contraste des messages lus légèrement accentué (aperçu à `text-muted-foreground/70`).
+- **`/api/folders`** — le composant `MessageList` charge désormais la liste des dossiers dès qu'un compte est actif (même clé SWR que la Sidebar, donc mutualisée) pour résoudre le dossier d'archive.
+- **`app/api/dashboard/route.ts`** — importe `scoreFocus` depuis `lib/focus.ts` au lieu de la copie locale (widget Focus inchangé).
+
+### Fixed
+- **`ReadingPane` — crash sur une réponse d'erreur.** Le `fetcher` ne vérifiait pas `res.ok` : un UID de cache périmé (message déplacé/expurgé depuis la dernière synchro) renvoyait `{ error }` que le composant lisait comme un message → `message.from.name` sur `undefined` → « Application error ». Le fetcher lève désormais sur `!ok` / corps `{ error }`, et un état récupérable (« impossible de charger » + Réessayer) remplace le rendu.
+- **Ouverture d'un item « À traiter » dans un autre dossier.** `synapmail:open-message` transporte maintenant `folder` ; `MailClient` navigue vers ce dossier avant d'ouvrir le message (avant : le volet gardait le dossier courant et échouait).
+- **`messages_cache` jamais purgé → items « À traiter » fantômes.** `listMessages` ne faisait qu'INSERT/UPDATE ; un message déplacé/supprimé depuis un autre client laissait sa ligne `is_read = false` indéfiniment (constaté : 26 « non lus » en cache pour 16 réels). Ces lignes remontaient dans la liste focus puis échouaient à l'ouverture. `listMessages` réconcilie désormais le cache d'un dossier à chaque chargement de la 1ʳᵉ page (`SEARCH ALL` UID → `DELETE` des UID absents), en tâche de fond.
+- **Focus — dossiers Gmail « Tous les messages » / « Important » / « Deleted »** ajoutés à l'exclusion `NON_INBOX` de `lib/focus.ts` (un non-lu dans « All Mail » n'est plus compté en double avec sa copie dans INBOX).
+- **Colonne liste — largeur fixe rognée sur écran étroit.** La colonne de la liste des messages était figée à `listWidth` px (`shrink-0`) à tous les points de rupture : sur un viewport / une fenêtre plus étroite que cette largeur, elle ne pouvait pas se réduire et son bord droit — donc les boutons d'action de coin (archiver / traité / supprimer / reporter) — était coupé par le `overflow-hidden` du `<main>`. La largeur redimensionnable ne s'applique plus qu'à partir de `lg` (comme la poignée de redimensionnement, déjà `hidden lg:block`) ; en dessous, la colonne prend `w-full`. (`app/(app)/mail/MailClient.tsx`)
+- **Barre d'outils de la liste — segments rognés sur colonne étroite.** Les barres d'outils (filtre `Tous / Non lus` + densité `Confort / Compact` + icônes ; et la barre de sélection multiple) étaient sur une seule ligne `flex` non-cassable : en colonne étroite, `Non lus` et `Compact` étaient tronqués. Passage en `flex-wrap` avec `ml-auto` sur le groupe d'icônes de droite (remplace l'entretoise `flex-1`) → les contrôles passent proprement à la ligne suivante au lieu d'être coupés. (`components/layout/MessageList.tsx`)
+
+### Notes
+- Le report est purement côté application (aucun dossier IMAP « Snoozed ») : le message reste physiquement dans son dossier, seulement masqué de la liste. Visible tel quel depuis un autre client mail.
+- La détection du dossier d'archive repose sur le nom/chemin (`/archives?/i`), aucun flag RFC 6154 ne survivant à `/api/folders`.
+
+---
+
+## [1.3.0] — 2026-09-09 — Command center dashboard
+
+### Added
+- **Tableau de bord `/dashboard`** — nouveau centre de commande en grille bento (glassmorphism, dégradé mesh ambiant, thème clair/sombre). Widgets :
+  - **Bandeau KPI** — non-lus multi-comptes (+ nouveaux du jour), envoyés aujourd'hui, ouvertures suivies sur 7 j, envois programmés en attente ; compteurs animés (respectent `prefers-reduced-motion`).
+  - **Focus** — 4-5 messages priorisés par heuristique (`lib`-less) : contact VIP/fréquent (table `contacts`), sujet facture/échéance/réponse, message suivi, pièce jointe. Chaque item porte une puce de raison colorée.
+  - **Activité 14 jours** — courbe SVG reçus vs envoyés (aire dégradée, points de fin, delta de trafic), dérivée de `messages_cache`.
+  - **Comptes** — non-lus par compte + barre de proportion, couleur du compte.
+  - **Ils ont ouvert** — flux des ouvertures suivies (`sent_tracking.opened_at`, ré-ouvertures).
+  - **Programmés** — timeline verticale des `scheduled_emails` en attente.
+  - **Règles** — actions sur 7 j par règle (`rule_execution_log`), total + nombre de règles actives.
+  - **À recontacter** — contacts importants sans échange depuis 10 j+.
+  - **Écrire rapidement** — raccourcis de composition.
+- **`GET /api/dashboard`** — endpoint d'agrégation unique (`Promise.all` de ~15 requêtes), forme `{ data }`. Aucune nouvelle table : lit `messages_cache`, `sent_tracking`, `scheduled_emails`, `email_rules` + `rule_execution_log`, `contacts`, `email_accounts`.
+- **Préférence `start_view`** (`user_settings`, migration `ADD COLUMN IF NOT EXISTS`) — bascule "Ouvrir sur le tableau de bord" dans Réglages → Lecture. `/` redirige vers `/dashboard` ou `/mail` selon la valeur.
+- **Entrée "Tableau de bord"** dans la Sidebar (modes étendu + réduit), icône `LayoutDashboard`.
+- **Filtre par compte** — sélecteur « Tous les comptes ▾ » dans l'en-tête + clic sur une ligne du widget « Comptes ». `GET /api/dashboard?account=<id>` restreint tous les widgets (sauf la liste des comptes et les contacts, qui n'ont pas de dimension par compte en base). Choix mémorisé (`localStorage: synapmail:dashboardAccount`), `keepPreviousData` pour éviter le flash au changement, reset auto si le compte n'existe plus (`data.accountFilter` renvoyé par l'API).
+- **Étiquette de compte** (pastille couleur + nom) sur chaque ligne Focus / Ils ont ouvert / Programmés — masquée quand le dashboard est déjà filtré sur un seul compte.
+- Bloc de traductions `dashboard.*` + clé `mail.dashboard` dans `locales/{fr,en}.json`.
+
+### Changed
+- **Sidebar (barre de navigation)** — restylée pour s'accorder au tableau de bord : fond dégradé zinc + halo violet en haut, bouton « Nouveau message » en dégradé violet→bleu, états actifs `bg-violet-500/15` + liseré interne violet, badges non-lus violets, hover unifié (`white/[0.06]`). Aucun changement de structure ni de comportement. (`components/layout/Sidebar.tsx`, `components/layout/AppShell.tsx`)
+
+### Notes
+- Le dashboard reflète les données de `messages_cache` : les dossiers jamais ouverts dans l'app peuvent être sous-représentés jusqu'à leur première synchro.
+- Le "Focus" est purement heuristique (pas d'appel LLM) — l'`ai_settings` n'est pas sollicité.
 
 ---
 

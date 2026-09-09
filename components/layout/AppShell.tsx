@@ -25,7 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-muted/30">
       {/* Desktop sidebar */}
-      <aside className={`hidden lg:flex shrink-0 flex-col bg-zinc-900 dark:bg-zinc-950 text-zinc-100 transition-all duration-200 ${sidebarCollapsed ? 'w-14' : 'w-64'}`}>
+      <aside className={`hidden lg:flex shrink-0 flex-col bg-zinc-950 text-zinc-100 border-r border-white/[0.06] transition-all duration-200 ${sidebarCollapsed ? 'w-14' : 'w-64'}`}>
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleCollapse} />
       </aside>
 
@@ -36,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="fixed inset-0 bg-black/50"
             onClick={() => setSidebarOpen(false)}
           />
-          <aside className="relative z-10 w-64 h-full flex flex-col bg-zinc-900 dark:bg-zinc-950 text-zinc-100 shadow-2xl">
+          <aside className="relative z-10 w-64 h-full flex flex-col bg-zinc-950 text-zinc-100 border-r border-white/[0.06] shadow-2xl">
             <Sidebar onClose={() => setSidebarOpen(false)} />
           </aside>
         </div>

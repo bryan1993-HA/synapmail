@@ -11,6 +11,8 @@ Quick navigation reference for every file and feature.
 | Change logo / brand assets | `public/brand/` (svg/, png/, anime/) |
 | Change favicon | `app/layout.tsx` → metadata.icons |
 | Change login page | `app/(auth)/login/page.tsx` |
+| Change the dashboard / command center | `app/(app)/dashboard/DashboardClient.tsx` (+ `app/api/dashboard/route.ts`) |
+| Change "open on dashboard" preference | `app/(app)/settings/reading/page.tsx` → `start_view` |
 | Change email list | `components/layout/MessageList.tsx` |
 | Change bulk actions / checkboxes / drag | `components/layout/MessageList.tsx` |
 | Change right-click context menu | `components/ui/MessageContextMenu.tsx` |
@@ -24,6 +26,14 @@ Quick navigation reference for every file and feature.
 | Change To/Cc/Bcc autocomplete | `components/mail/EmailTokenInput.tsx` |
 | Change MDN toast | `components/mail/MdnToast.tsx` |
 | Change scheduled emails popover | `components/mail/ScheduledPopover.tsx` |
+| Change snoozed messages popover | `components/mail/SnoozePopover.tsx` |
+| Change list date grouping / density toggle | `components/layout/MessageList.tsx` |
+| Change row quick actions (archive/done/delete/snooze) | `components/layout/MessageList.tsx` → `renderRow` |
+| Change infinite scroll / pagination sentinel | `components/layout/MessageList.tsx` → `sentinelRef` + `IntersectionObserver` effect |
+| Change snooze preset times | `lib/snooze-presets.ts` |
+| Change "à traiter" empty state | `components/layout/ReadingPane.tsx` (`!uid` branch) + `app/api/focus/route.ts` |
+| Change focus heuristic (scoring) | `lib/focus.ts` → `scoreFocus()` / `getFocusItems()` |
+| Change snooze wake sweep | `lib/scheduler.ts` → `processSnoozes()` |
 | Change sidebar / drag-drop / collapsible | `components/layout/Sidebar.tsx` |
 | Change settings sidebar nav | `components/settings/SettingsSidebar.tsx` |
 | Change rules UI | `components/settings/RulesClient.tsx` |
@@ -126,6 +136,9 @@ Quick navigation reference for every file and feature.
 │   │   └── register/page.tsx
 │   ├── (app)/                        ← Protected routes (auth guard in middleware)
 │   │   ├── layout.tsx                ← AppShell
+│   │   ├── dashboard/
+│   │   │   ├── page.tsx              ← Server component (auth guard + Suspense)
+│   │   │   └── DashboardClient.tsx   ← Client: bento command center (KPIs, activity chart, focus, receipts, scheduled, rules, follow-ups)
 │   │   ├── mail/
 │   │   │   ├── page.tsx              ← Server component (auth guard + Suspense)
 │   │   │   └── MailClient.tsx        ← Client: orchestrates all mail UI + keyboard shortcuts + undo send
@@ -205,14 +218,15 @@ Quick navigation reference for every file and feature.
 │   ├── layout/
 │   │   ├── AppShell.tsx             ← Three-column shell + mobile drawer
 │   │   ├── Sidebar.tsx              ← Accounts + folders + drag-drop + collapsible + unread badges
-│   │   ├── MessageList.tsx          ← Email list: threads, checkboxes, bulk bar, drag source, context menu, quick actions
+│   │   ├── MessageList.tsx          ← Email list: threads, checkboxes, bulk bar, drag source, context menu, quick actions, infinite scroll
 │   │   ├── ReadingPane.tsx          ← Email viewer: body, attachments, reply/replyAll/forward, SecurityBanner
 │   │   └── ThreadPane.tsx           ← Multi-message thread view
 │   ├── mail/
 │   │   ├── ComposeModal.tsx         ← Compose / reply / replyAll / forward + BCC + templates + scheduled + undo send
 │   │   ├── EmailTokenInput.tsx      ← To/Cc/Bcc token input with contact autocomplete
 │   │   ├── MdnToast.tsx             ← 30-second toast for received read receipts (MDN)
-│   │   └── ScheduledPopover.tsx     ← Popover listing pending scheduled emails with cancel
+│   │   ├── ScheduledPopover.tsx     ← Popover listing pending scheduled emails with cancel
+│   │   └── SnoozePopover.tsx        ← Toolbar popover listing snoozed messages + "move back to inbox"
 │   ├── settings/
 │   │   ├── RulesClient.tsx          ← Rules page client component (form, drag-drop priority, stats)
 │   │   └── SettingsSidebar.tsx      ← Settings navigation sidebar
@@ -233,6 +247,7 @@ Quick navigation reference for every file and feature.
 │   ├── contacts.ts                  ← Contact extraction + upsert logic
 │   ├── db.ts                        ← PostgreSQL pool — query<T>(sql, values?)
 │   ├── encrypt.ts                   ← AES-256-GCM encrypt/decrypt
+│   ├── focus.ts                     ← "À traiter" heuristic — scoreFocus() + getFocusItems() (shared: /api/dashboard + /api/focus)
 │   ├── i18n.ts                      ← next-intl server config
 │   ├── email-iframe.ts              ← buildIframeHtml() + hardenIframeLinks() — partagé ReadingPane/ThreadPane
 │   ├── html.ts                      ← htmlToText() + wrapHtmlDocument() — partagé SMTP/IA
@@ -240,8 +255,9 @@ Quick navigation reference for every file and feature.
 │   ├── msOAuth.ts                   ← Microsoft OAuth2 token refresh
 │   ├── routing.ts                   ← next-intl routing config
 │   ├── rules.ts                     ← Rules engine: evaluate conditions, run actions, execute all
-│   ├── scheduler.ts                 ← Scheduled email worker (FOR UPDATE SKIP LOCKED, 60 s interval)
+│   ├── scheduler.ts                 ← Scheduled email worker + snooze wake sweep (60 s intervals)
 │   ├── schedulerEvents.ts           ← SSE event emitter for scheduler (scheduled_sent)
+│   ├── snooze-presets.ts            ← Client-side snooze preset times (later/tonight/tomorrow/weekend/next week)
 │   ├── smtp.ts                      ← nodemailer wrapper (send + verify + wrap HTML + text/plain)
 │   └── utils.ts                     ← cn() + helpers
 │
@@ -266,6 +282,11 @@ Quick navigation reference for every file and feature.
 
 ## API Endpoints
 
+### Dashboard
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/dashboard?account=` | Aggregated command-center overview (KPIs, per-account unread, 14-day activity, AI-scored focus list, tracked opens, scheduled queue, rule activity, follow-up contacts) — all from existing tables. Optional `account` narrows every widget except the account list + contacts |
+
 ### Accounts
 | Method | Path | Description |
 |--------|------|-------------|
@@ -286,9 +307,12 @@ Quick navigation reference for every file and feature.
 | DELETE | `/api/messages/bulk` | Bulk delete |
 | GET | `/api/messages/[id]/attachment/[partId]?inline=` | Download or inline-preview attachment |
 | POST | `/api/messages/[id]/mdn` | Register received MDN (read receipt) |
+| POST | `/api/messages/[id]/snooze` | Snooze a message until a date (UPSERT into `snoozed_messages`) |
+| DELETE | `/api/messages/[id]/snooze?account=&folder=` | Un-snooze (cancel a report) |
 | GET | `/api/messages/search?q=&account=` | Full-text IMAP search |
 | GET | `/api/messages/thread?subject=&account=` | Thread messages by normalized subject |
 | POST | `/api/messages/send` | Send email (immediate or scheduled, forwarded attachments) |
+| GET | `/api/focus?account=` | Light "à traiter" list for the reading-pane empty state (shared heuristic with the dashboard, via `lib/focus.ts`) |
 
 ### Folders & Stream
 | Method | Path | Description |
@@ -296,11 +320,12 @@ Quick navigation reference for every file and feature.
 | GET | `/api/folders?account=` | List IMAP folders |
 | GET | `/api/stream` | Server-Sent Events (new mail + scheduled_sent) |
 
-### Scheduled
+### Scheduled & Snoozed
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/scheduled` | List pending scheduled emails |
 | DELETE | `/api/scheduled/[id]` | Cancel scheduled email |
+| GET | `/api/snoozed?account=` | List pending snoozed messages |
 
 ### Contacts
 | Method | Path | Description |
@@ -355,13 +380,14 @@ Quick navigation reference for every file and feature.
 | `email_accounts` | IMAP/SMTP accounts per user |
 | `signatures` | Rich-text signatures per account |
 | `messages_cache` | Cached message metadata (fast list + unread badges) |
-| `user_settings` | Per-user preferences (theme, language, notifications, undo_send_delay…) |
+| `user_settings` | Per-user preferences (theme, language, notifications, undo_send_delay, start_view…) |
 | `scheduled_emails` | Emails queued for future delivery (status: pending/sent/failed) |
 | `sent_tracking` | Read receipt tracking tokens + open timestamps |
 | `email_rules` | User-defined filter rules with conditions + actions |
 | `rule_execution_log` | Per-rule execution history (uid, action, timestamp) |
 | `compose_templates` | Saved email templates with `{{variable}}` support |
 | `contacts` | Auto-extracted contacts per account (name, email, frequency) |
+| `snoozed_messages` | Snoozed message refs (`account_id`+`folder`+`uid`, `snooze_until`); hidden from list until wake, swept by the scheduler |
 
 ---
 

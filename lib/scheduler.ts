@@ -242,6 +242,20 @@ export async function processRules(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Snooze wake — drops expired snoozes so the message reappears in the list
+// on the client's next poll (MessageList refreshes every 60s).
+// ---------------------------------------------------------------------------
+
+export async function processSnoozes(): Promise<void> {
+  const woken = await query<{ id: string }>(
+    `DELETE FROM snoozed_messages WHERE snooze_until <= NOW() RETURNING id`,
+  )
+  if (woken.length) {
+    console.log(`[scheduler/snooze] woke ${woken.length} message(s)`)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Singleton scheduler — starts once per process lifetime
 // ---------------------------------------------------------------------------
 
@@ -254,6 +268,11 @@ export function startScheduler(): void {
   // Scheduled emails — every 60s
   setInterval(() => {
     processScheduledEmails().catch(err => console.error('[scheduler/emails]', err))
+  }, 60_000)
+
+  // Snooze wake — every 60s
+  setInterval(() => {
+    processSnoozes().catch(err => console.error('[scheduler/snooze]', err))
   }, 60_000)
 
   // Rules — every 5 minutes

@@ -13,6 +13,7 @@ interface UserSettings {
   reading_pane: boolean
   notifications: boolean
   undo_send_delay: number
+  start_view: string
 }
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -57,6 +58,7 @@ export default function ReadingPage() {
   const [messagesPerPage, setMessagesPerPage] = useState(30)
   const [threadView, setThreadView] = useState(true)
   const [readingPane, setReadingPane] = useState(true)
+  const [startOnDashboard, setStartOnDashboard] = useState(false)
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
 
@@ -65,6 +67,7 @@ export default function ReadingPage() {
       setMessagesPerPage(settings.messages_per_page)
       setThreadView(settings.thread_view)
       setReadingPane(settings.reading_pane)
+      setStartOnDashboard(settings.start_view === 'dashboard')
     }
   }, [settings])
 
@@ -78,6 +81,7 @@ export default function ReadingPage() {
           messages_per_page: messagesPerPage,
           thread_view: threadView,
           reading_pane: readingPane,
+          start_view: startOnDashboard ? 'dashboard' : 'inbox',
         }),
       })
       await mutate()
@@ -127,6 +131,13 @@ export default function ReadingPage() {
             onChange={setThreadView}
             label="Vue en fil de discussion"
             description="Regrouper les messages par conversation (style Gmail)"
+          />
+          <div className="border-t border-border" />
+          <Toggle
+            checked={startOnDashboard}
+            onChange={setStartOnDashboard}
+            label="Ouvrir sur le tableau de bord"
+            description="Afficher le centre de commande au lancement plutôt que la boîte de réception"
           />
           <div className="border-t border-border" />
           <div className="opacity-60 pointer-events-none">

@@ -197,10 +197,30 @@ export async function listMessages(
       }
     }
 
+    // Reconcile the cache for this folder on the first page: collect every live
+    // UID so ghost rows (message moved/deleted from another client, rule, or
+    // expunge) can be pruned. Without this, `messages_cache` accumulates stale
+    // `is_read = false` rows that pollute the focus list and unread counts.
+    let liveUids: string[] | null = null
+    if (page === 1 && account.id) {
+      try {
+        const all = await client.search({ all: true }, { uid: true })
+        if (Array.isArray(all)) {
+          liveUids = all.map(String)
+        } else if (total === 0) {
+          liveUids = []          // genuinely empty mailbox
+        }
+        // a non-array result on a non-empty mailbox → leave null, skip pruning
+      } catch {
+        liveUids = null
+      }
+    }
+
     // Upsert messages_cache — fire-and-forget, non-bloquant
     // RETURNING xmax: 0 = nouvelle ligne (message jamais vu) → tracker le contact une seule fois
-    if (account.id && messages.length > 0) {
+    if (account.id) {
       const accountId = account.id
+      const seenUids = liveUids
       void (async () => {
         try {
           for (const m of messages) {
@@ -228,6 +248,22 @@ export async function listMessages(
             if (userId && result[0]?.xmax === '0' && m.from.address
               && m.from.address.toLowerCase() !== account.username.toLowerCase()) {
               upsertContact(userId, { name: m.from.name, address: m.from.address }, 'received').catch(() => {})
+            }
+          }
+
+          // Prune ghost rows for this folder (UID no longer live).
+          if (seenUids !== null) {
+            if (seenUids.length > 0) {
+              await query(
+                `DELETE FROM messages_cache
+                 WHERE account_id = $1 AND folder = $2 AND NOT (uid = ANY($3::varchar[]))`,
+                [accountId, folder, seenUids]
+              )
+            } else {
+              await query(
+                `DELETE FROM messages_cache WHERE account_id = $1 AND folder = $2`,
+                [accountId, folder]
+              )
             }
           }
         } catch { /* non-bloquant */ }

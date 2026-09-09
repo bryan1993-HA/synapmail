@@ -36,6 +36,9 @@ app/
     register/page.tsx           # Registration (admin-only after setup)
   (app)/
     layout.tsx                  # App layout (requires auth) — three-column shell
+    dashboard/
+      page.tsx                  # Server component (auth guard + Suspense)
+      DashboardClient.tsx       # Client: bento command center (KPIs, activity chart, focus, receipts, scheduled, rules, follow-ups)
     mail/
       page.tsx                  # Server component (auth guard + Suspense)
       MailClient.tsx            # Client: orchestrates all mail UI, keyboard shortcuts, undo send countdown
@@ -60,6 +63,7 @@ app/
       users/page.tsx            # Admin: user management
   api/
     auth/[...nextauth]/route.ts
+    dashboard/route.ts          # GET aggregated command-center overview (KPIs, unread, activity, focus, receipts, scheduled, rules, follow-ups)
     accounts/route.ts           # GET list / POST create email account
     accounts/[id]/route.ts      # PATCH update / DELETE remove
     accounts/test/route.ts      # POST test IMAP+SMTP connection
@@ -75,7 +79,9 @@ app/
     messages/bulk/route.ts      # PATCH mark read/move + DELETE bulk
     messages/[id]/route.ts      # GET full / PATCH (read, star) / DELETE
     messages/[id]/mdn/route.ts  # POST register received MDN read receipt
+    messages/[id]/snooze/route.ts  # POST snooze until date / DELETE un-snooze
     messages/[id]/attachment/[partId]/route.ts  # GET download or inline (?inline=true)
+    focus/route.ts              # GET light "à traiter" list (reading-pane empty state; shares lib/focus.ts with dashboard)
     oauth/microsoft/route.ts    # GET initiate OAuth2 flow
     oauth/microsoft/callback/route.ts           # GET OAuth2 callback + token exchange
     profile/route.ts            # GET current user / PATCH name + password
@@ -89,6 +95,7 @@ app/
     rules/[id]/test/route.ts    # POST test rule on folder
     scheduled/route.ts          # GET pending scheduled emails
     scheduled/[id]/route.ts     # DELETE cancel
+    snoozed/route.ts            # GET pending snoozed messages
     search/route.ts             # GET legacy search endpoint
     settings/route.ts           # GET + PATCH user settings (UPSERT)
     signatures/route.ts         # GET list / POST create
@@ -104,14 +111,15 @@ components/
   layout/
     AppShell.tsx                # Three-column shell + mobile drawer
     Sidebar.tsx                 # Accounts + folders + drag-drop + collapsible + unread badges
-    MessageList.tsx             # Email list: threads, bulk, drag, context menu, quick actions
-    ReadingPane.tsx             # Email viewer: body, attachments, SecurityBanner, reply/replyAll/forward
+    MessageList.tsx             # Email list: date groups, density toggle, threads, bulk, drag, context menu, corner quick actions (archive/done/delete/snooze), infinite scroll (IntersectionObserver sentinel)
+    ReadingPane.tsx             # Email viewer: body, attachments, SecurityBanner, reply/replyAll/forward; empty state = "à traiter" focus list
     ThreadPane.tsx              # Multi-message thread view
   mail/
     ComposeModal.tsx            # Compose / reply / replyAll / forward + BCC + templates + scheduled + undo send
     EmailTokenInput.tsx         # To/Cc/Bcc token input with contact autocomplete
     MdnToast.tsx                # 30-second toast for received MDN read receipts
     ScheduledPopover.tsx        # Popover listing pending scheduled emails with cancel
+    SnoozePopover.tsx           # Toolbar popover listing snoozed messages + "move back to inbox"
   settings/
     RulesClient.tsx             # Rules page: form, drag-drop priority, test, stats
     SettingsSidebar.tsx         # Settings navigation sidebar
@@ -131,12 +139,14 @@ lib/
   contacts.ts                   # Contact extraction from emails + upsert logic
   db.ts                         # PostgreSQL pool — query<T>(sql, values?)
   encrypt.ts                    # AES-256-GCM encrypt/decrypt
+  focus.ts                      # "À traiter" heuristic — scoreFocus() + getFocusItems() (shared by /api/dashboard + /api/focus)
   i18n.ts                       # next-intl server config
   imap.ts                       # imapflow wrapper — connect, list, fetch, bulk ops, attachments
   msOAuth.ts                    # Microsoft OAuth2 token refresh
   routing.ts                    # next-intl routing config
   rules.ts                      # Rules engine: evaluate conditions + apply actions
-  scheduler.ts                  # Scheduled email worker (FOR UPDATE SKIP LOCKED, 60s interval)
+  scheduler.ts                  # Scheduled email worker + snooze wake sweep (60s intervals)
+  snooze-presets.ts             # Client-side snooze preset times (later/tonight/tomorrow/weekend/next week)
   schedulerEvents.ts            # SSE event emitter for scheduler (scheduled_sent)
   smtp.ts                       # nodemailer wrapper — send, verify
   utils.ts                      # cn() + helpers
@@ -148,6 +158,7 @@ locales/
   fr.json                       # French translations
 
 types/
+  dashboard.ts                  # DashboardData + widget shapes for /api/dashboard
   contact.ts                    # Contact interface
   email.ts                      # Message, Folder, Attachment, EmailAddress, Thread
   account.ts                    # EmailAccount, Signature, User
@@ -201,7 +212,8 @@ messages_cache (id, account_id, folder, uid, message_id, from_address, from_name
 
 -- App settings per user
 user_settings (user_id, theme, language, messages_per_page, thread_view,
-               reading_pane, notifications, undo_send_delay, updated_at)
+               reading_pane, notifications, undo_send_delay, start_view, updated_at)
+  start_view: 'inbox' | 'dashboard'   -- landing view; '/' redirects accordingly
 
 -- Scheduled emails
 scheduled_emails (id, account_id, user_id, from_address, to_addresses, cc, bcc,
@@ -228,6 +240,11 @@ compose_templates (id, account_id, user_id, name, subject, body_html, created_at
 
 -- Contacts (auto-extracted from emails)
 contacts (id, account_id, user_id, email, name, frequency, last_seen, created_at)
+
+-- Snoozed messages (Direction B) — message hidden from the list until snooze_until
+snoozed_messages (id, user_id, account_id, folder, uid, subject, from_address, from_name,
+                  snooze_until, created_at)
+  UNIQUE(account_id, folder, uid) — scheduler DELETEs expired rows every 60s
 ```
 
 ---
@@ -245,6 +262,7 @@ contacts (id, account_id, user_id, email, name, frequency, last_seen, created_at
 - Always `client.logout()` after each operation
 - UID-based operations (not sequence numbers) for reliability
 - Folder names with spaces need quoting: `"[Gmail]/All Mail"`
+- **Cache reconcile**: `listMessages` only INSERT/UPDATEs `messages_cache`; on page 1 it also runs `SEARCH ALL` (uid) and DELETEs cache rows whose UID is no longer live (fire-and-forget). Without this, messages moved/deleted elsewhere leave ghost `is_read=false` rows that pollute the focus list and unread counts.
 
 ### SMTP (nodemailer)
 - Create transporter from account settings
@@ -348,7 +366,17 @@ contacts (id, account_id, user_id, email, name, frequency, last_seen, created_at
 - ComposeModal passes `scheduledAt: ISO string` to `POST /api/messages/send`
 - Route saves to `scheduled_emails` (status: 'pending') instead of calling SMTP immediately
 - `lib/scheduler.ts` runs every 60s: `SELECT ... FOR UPDATE SKIP LOCKED` fetches due rows, sends via SMTP, marks sent, emits `scheduled_sent` SSE event
+- Same file also runs `processSnoozes()` every 60s (DELETE expired `snoozed_messages`)
 - `instrumentation.ts` starts the scheduler at process boot (Next.js 14 `experimentalInstrumentationHook`) — independent of any user session
+
+### Mail list — Direction B (date groups, density, corner actions, snooze)
+- **Date groups**: `MessageList` buckets threads by the last message's date (`grpToday`/`grpYesterday`/`grpThisWeek` <7d/`grpThisMonth` <30d/`MMMM yyyy`). Sticky headers (`sticky top-0` inside the scroll container). Disabled in search mode.
+- **Density**: `localStorage['synapmail:mailDensity']` = `'comfortable' | 'compact'`. Compact = tighter rows, `w-7` avatars, preview line hidden. Segmented toggle in the toolbar.
+- **Row layout**: grid `[avatar] [content]`, `position: relative`. Corner action strip is `absolute top-1.5 right-2` (out of the subject flow — objet/aperçu keep full width); line 1 gets `pr-[104px]`/`pr-[80px]` to clear it. Actions: Archiver (only if an archive folder is name-matched via `/archives?/i`), Marquer traité / non lu, Supprimer, Reporter. Always visible (no hover-only).
+- **Avatars**: hashed color for unread, neutral `bg-muted` for read.
+- **Snooze**: per-row preset menu (`lib/snooze-presets.ts`). `POST /api/messages/[id]/snooze` UPSERTs `snoozed_messages`; the row is optimistically removed. `GET /api/messages` filters out non-expired snoozed UIDs (and adjusts `total`). `lib/scheduler.ts` → `processSnoozes()` DELETEs expired rows every 60s; the message reappears on the next list poll (60s `refreshInterval`). Toolbar `SnoozePopover` lists pending snoozes + "move back to inbox" (`DELETE …/snooze`). Custom event `synapmail:snooze-changed` refreshes the popover.
+- **Reading-pane empty state**: `ReadingPane` (`!uid` branch) fetches `GET /api/focus?account=` and renders the top-5 "à traiter" list with reason chips; clicking dispatches `synapmail:open-message` **with `folder`** — `MailClient` navigates to that folder (`router.push`) before opening, so a focus item outside the current folder still loads. Scoring is shared with the dashboard via `lib/focus.ts` (`scoreFocus`). `ReadingPane`'s `fetcher` throws on `!res.ok` / `{ error }` bodies and shows a recoverable state (never renders a half message).
+- **Infinite scroll**: no "load more" button. A sentinel `<div>` at the list bottom is watched by an `IntersectionObserver` (`root` = the `overflow-y-auto` container via `scrollRef`, `rootMargin: '600px 0px'`) that runs `setPage(p => p + 1)` before the user reaches the end. `loadingLockRef` (a ref holding the last page auto-requested) + the `!isValidating` guard keep exactly one page in flight; the chain self-stops when the viewport is full or `messages.length >= total`. The sentinel is still a real `<button>` (keyboard / observer-failure fallback) showing `mail.messagesRemaining` or a `mail.loadingMore` spinner; a page > 1 fetch error swaps it for a `retry` button (`morePageError`); once fully loaded it shows `mail.endOfList`. Disabled in search mode (`canLoadMore` gates on `!isSearchMode && !error`). `loadingLockRef` is reset to 0 on folder/account change, filter change and manual refresh — same places that reset `page`/`accumulated`. Pre-existing limitation unchanged: SWR's 60s `refreshInterval` only revalidates the highest page key, so earlier pages don't auto-refresh (migrate to `useSWRInfinite` if that matters).
 
 ### Undo send
 - `MailClient` holds `undoSendDelay` read from `/api/settings`; passes to `ComposeModal`
@@ -396,15 +424,31 @@ contacts (id, account_id, user_id, email, name, frequency, last_seen, created_at
 - Theme: next-themes cookie; Language: locale cookie → picked up by next-intl middleware on next request
 - `MailClient` reads settings via SWR `/api/settings`; `settingsPaneInitialized` ref prevents overwriting user's in-session toggle
 
+### Dashboard / command center (`/dashboard`)
+- Renders inside `AppShell` (Sidebar + full-width content) — NOT the 3-column mail shell
+- `GET /api/dashboard` = one aggregation route: `Promise.all` of ~15 SQL queries, returns `{ data: DashboardData }` (see `types/dashboard.ts`). No new tables — reads `messages_cache`, `sent_tracking`, `scheduled_emails`, `email_rules` + `rule_execution_log`, `contacts`, `email_accounts`
+- **Account scope**: `?account=<id>` (validated against `user_id`) narrows every widget except the account list and the two contact widgets (`contacts` has no `account_id` in this schema). Response always echoes `accountFilter` (the id it actually applied, or `null`) so the client can drop a stale filter. Client persists the choice in `localStorage['synapmail:dashboardAccount']`, uses SWR `keepPreviousData` + an `isValidating` dim. Selector in the header + click-to-filter on the "Comptes" widget rows
+- Focus / receipts / scheduled items carry `accountName` + `accountColor`; the client shows a per-account chip on each unless already scoped to one account
+- **Focus list** is heuristic-only (no LLM / `ai_settings`): scores unread inbox messages by starred, VIP/frequent contact (`contacts`), and subject regex (invoice / deadline / reply / attachment). Top 5 by score
+- **Unread / activity** counts exclude folders matching `trash|sent|junk|spam|draft|archive` (ILIKE). Accuracy is bounded by what `messages_cache` holds — folders never opened in-app may be under-counted
+- **Activity chart** = inline SVG built from a zero-filled 14-day array (server-side), `vector-effect="non-scaling-stroke"`, gradient area fills. No chart lib
+- `start_view` in `user_settings` (`'inbox'` default | `'dashboard'`) — set via Settings → Lecture toggle; `app/page.tsx` (`/`) reads it and redirects. `/mail` stays the direct link
+- Client animations (`useCountUp`, `motion-safe:animate-in` card stagger) all gate on `prefers-reduced-motion`
+- Quick-compose / "Write" buttons `router.push('/mail')` then dispatch `synapmail:compose` after 350ms (ComposeModal only mounts on `/mail`)
+
 ### Custom events (cross-component communication)
 - `synapmail:account-change` — emitted by account switcher; Sidebar and MailClient listen to update active account
 - `synapmail:compose` — triggers ComposeModal open
-- `synapmail:open-message` — emitted by notification click; MailClient opens the message in ReadingPane
+- `synapmail:open-message` — emitted by notification click AND by the reading-pane "à traiter" list; MailClient opens the message in ReadingPane
+- `synapmail:scheduled-sent` — emitted on `scheduled_sent` SSE; refreshes `ScheduledPopover`
+- `synapmail:snooze-changed` — emitted after a snooze/un-snooze; refreshes `SnoozePopover`
 
 ### Responsive Design
 - Mobile: single column (drawer for sidebar)
 - Tablet: two columns (sidebar hidden by default)
 - Desktop: three columns full; sidebar collapsible (icon-only ↔ full); columns resizable via drag handle
+- Mail list column width: `w-full` below `lg`, fixed `listWidth` (resizable, 240–600px) only at `lg+` — matches the `hidden lg:block` resize handle. Never apply the pixel width at all breakpoints: a narrow viewport can't shrink a `shrink-0` fixed-width column, so its right edge (corner action strip) gets clipped by `<main>`'s `overflow-hidden`. `listWidth` is passed as the `--synap-list-w` CSS var and consumed via `lg:w-[var(--synap-list-w)]`.
+- `MessageList` toolbars (filter/density row + bulk-selection row) are `flex flex-wrap`; the right-hand icon group uses `ml-auto` (not a `flex-1` spacer) so it wraps to a second line on a narrow column instead of the segmented controls being clipped.
 
 ---
 

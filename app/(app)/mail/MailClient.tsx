@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import useSWR from 'swr'
 import { MessageList } from '@/components/layout/MessageList'
@@ -49,6 +49,7 @@ export function MailClient() {
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const searchParams = useSearchParams()
+  const router = useRouter()
   const folder = searchParams.get('folder') ?? 'INBOX'
 
   useEffect(() => {
@@ -121,10 +122,15 @@ export function MailClient() {
     return () => window.removeEventListener('synapmail:account-change', handler)
   }, [])
 
-  // Listen for notification click → open specific message
+  // Listen for notification click / "à traiter" click → open specific message
   useEffect(() => {
     const handler = (e: Event) => {
-      const { uid, accountId } = (e as CustomEvent<{ uid: string; accountId: string; folder: string }>).detail
+      const { uid, accountId, folder: targetFolder } = (e as CustomEvent<{ uid: string; accountId: string; folder?: string }>).detail
+      // The item may live in another folder than the one on screen — navigate so
+      // ReadingPane fetches it from the right place.
+      if (targetFolder) {
+        router.push(`/mail?folder=${encodeURIComponent(targetFolder)}`)
+      }
       handleSelect(uid, accountId)
       setShowReadingPane(true)
     }
@@ -315,8 +321,8 @@ export function MailClient() {
   return (
     <div className="flex h-full min-h-0">
       <div
-        className={`${showReadingPane ? 'hidden lg:flex' : 'flex'} shrink-0 flex-col border-r border-border`}
-        style={{ width: listWidth }}
+        className={`${showReadingPane ? 'hidden lg:flex' : 'flex'} w-full lg:w-[var(--synap-list-w)] shrink-0 flex-col border-r border-border`}
+        style={{ '--synap-list-w': `${listWidth}px` } as React.CSSProperties}
       >
         <MessageList
           folder={folder}
@@ -359,6 +365,7 @@ export function MailClient() {
               uid={selectedUid}
               accountId={selectedAccount}
               folder={folder}
+              activeAccountId={resolvedActiveId}
               onDelete={handleDelete}
               onReply={handleReply}
               onReplyAll={handleReplyAll}

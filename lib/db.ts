@@ -98,6 +98,7 @@ export async function initDb(): Promise<void> {
 
   // Migrations — colonnes ajoutées après la création initiale
   await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS undo_send_delay INTEGER NOT NULL DEFAULT 10`)
+  await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS start_view VARCHAR(20) NOT NULL DEFAULT 'inbox'`)
 
   await query(`
     CREATE TABLE IF NOT EXISTS contacts (
@@ -210,6 +211,24 @@ export async function initDb(): Promise<void> {
   `)
   await query(`CREATE INDEX IF NOT EXISTS rule_exec_log_rule_idx ON rule_execution_log(rule_id, executed_at DESC)`)
   await query(`CREATE INDEX IF NOT EXISTS rule_exec_log_user_idx ON rule_execution_log(user_id, executed_at DESC)`)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS snoozed_messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+      folder VARCHAR(255) NOT NULL,
+      uid VARCHAR(255) NOT NULL,
+      subject TEXT,
+      from_address VARCHAR(255),
+      from_name VARCHAR(255),
+      snooze_until TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(account_id, folder, uid)
+    )
+  `)
+  await query(`CREATE INDEX IF NOT EXISTS snoozed_until_idx ON snoozed_messages(snooze_until)`)
+  await query(`CREATE INDEX IF NOT EXISTS snoozed_account_folder_idx ON snoozed_messages(account_id, folder)`)
 
   await query(`
     CREATE TABLE IF NOT EXISTS ai_settings (

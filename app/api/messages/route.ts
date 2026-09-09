@@ -62,6 +62,19 @@ export async function GET(req: Request) {
 
     result.messages = result.messages.map(m => ({ ...m, accountId: account.id }))
 
+    // Hide snoozed messages until their wake time (scheduler drops expired rows).
+    const snoozed = await query<{ uid: string }>(
+      `SELECT uid FROM snoozed_messages
+       WHERE account_id = $1 AND folder = $2 AND snooze_until > now()`,
+      [account.id, folder]
+    )
+    if (snoozed.length) {
+      const hidden = new Set(snoozed.map(s => s.uid))
+      const before = result.messages.length
+      result.messages = result.messages.filter(m => !hidden.has(m.uid))
+      result.total = Math.max(0, result.total - (before - result.messages.length))
+    }
+
     return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/messages] IMAP error:', String(err))

@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Mail, Paperclip, Download, X, FileText, Image as ImageIcon, ReplyAll, MailX, CheckCircle2, AlertCircle, ShieldCheck, ShieldAlert, ShieldX, Filter } from 'lucide-react'
+import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Paperclip, Download, X, FileText, Image as ImageIcon, ReplyAll, MailX, CheckCircle2, AlertCircle, ShieldCheck, ShieldAlert, ShieldX, Filter, AlarmClock, CornerUpLeft, Users, ChevronRight } from 'lucide-react'
 import { AIToolbar } from '@/components/ai/AIToolbar'
 import useSWR from 'swr'
 import type { Message } from '@/types/email'
@@ -11,7 +11,14 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import { buildIframeHtml, hardenIframeLinks } from '@/lib/email-iframe'
 import { cn } from '@/lib/utils'
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+const fetcher = async (url: string) => {
+  const r = await fetch(url)
+  const body = await r.json().catch(() => null)
+  if (!r.ok || (body && typeof body === 'object' && 'error' in body)) {
+    throw new Error((body && body.error) || `HTTP ${r.status}`)
+  }
+  return body
+}
 
 const formatBytes = (bytes: number) =>
   bytes < 1024 ? bytes + 'B'
@@ -701,6 +708,7 @@ interface Props {
   uid: string | null
   accountId: string | null
   folder: string
+  activeAccountId?: string | null
   onDelete?: () => void
   onReply?: (msg: Message) => void
   onReplyAll?: (msg: Message) => void
@@ -709,7 +717,40 @@ interface Props {
   onAiReply?: (draft: string) => void
 }
 
-export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onReplyAll, onForward, onMessageLoaded, onAiReply }: Props) {
+type FocusReason = 'invoice' | 'deadline' | 'reply' | 'vip' | 'frequent' | 'starred' | 'attachment'
+interface FocusItem {
+  uid: string
+  accountId: string
+  accountName: string
+  accountColor: string
+  folder: string
+  subject: string
+  fromName: string | null
+  fromAddress: string | null
+  date: string
+  reason: FocusReason
+}
+
+const REASON_ICON: Record<FocusReason, React.ReactNode> = {
+  invoice: <FileText className="w-3 h-3" />,
+  deadline: <AlarmClock className="w-3 h-3" />,
+  reply: <CornerUpLeft className="w-3 h-3" />,
+  vip: <Star className="w-3 h-3" />,
+  frequent: <Users className="w-3 h-3" />,
+  starred: <Star className="w-3 h-3" />,
+  attachment: <Paperclip className="w-3 h-3" />,
+}
+const REASON_CLASS: Record<FocusReason, string> = {
+  invoice: 'text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10',
+  deadline: 'text-rose-600 dark:text-rose-400 border-rose-500/30 bg-rose-500/10',
+  reply: 'text-violet-600 dark:text-violet-400 border-violet-500/30 bg-violet-500/10',
+  vip: 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
+  frequent: 'text-blue-600 dark:text-blue-400 border-blue-500/30 bg-blue-500/10',
+  starred: 'text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10',
+  attachment: 'text-muted-foreground border-border bg-muted',
+}
+
+export function ReadingPane({ uid, accountId, folder, activeAccountId, onDelete, onReply, onReplyAll, onForward, onMessageLoaded, onAiReply }: Props) {
   const t = useTranslations('mail')
   const [isStarred, setIsStarred] = useState<boolean | null>(null)
 
@@ -717,7 +758,20 @@ export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onReply
     ? `/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`
     : null
 
-  const { data: message, isLoading, mutate } = useSWR<Message>(swrKey, fetcher)
+  const { data: message, isLoading, error, mutate } = useSWR<Message>(swrKey, fetcher)
+
+  // Direction B — "à traiter" list for the empty state (heuristic, no LLM)
+  const { data: focusRes } = useSWR<{ data: FocusItem[] }>(
+    !uid ? `/api/focus${activeAccountId ? `?account=${activeAccountId}` : ''}` : null,
+    fetcher,
+  )
+  const focusItems = focusRes?.data ?? []
+
+  const openFocus = (f: FocusItem) => {
+    window.dispatchEvent(new CustomEvent('synapmail:open-message', {
+      detail: { uid: f.uid, accountId: f.accountId, folder: f.folder },
+    }))
+  }
 
   useEffect(() => {
     if (message) {
@@ -755,30 +809,45 @@ export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onReply
 
   if (!uid) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 select-none px-6">
-        <div className="w-20 h-20 rounded-3xl bg-primary/8 flex items-center justify-center">
-          <Mail className="w-10 h-10 text-primary/30" />
-        </div>
-        <div className="text-center">
-          <p className="text-base font-medium text-foreground/60 mb-1">Aucun message sélectionné</p>
-          <p className="text-sm text-muted-foreground">Cliquez sur un message pour le lire</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground/70 mt-1 w-full max-w-xs">
-          <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-lg">
-            <kbd className="font-mono font-bold text-foreground/50 text-[11px]">c</kbd>
-            <span>Nouveau message</span>
+      <div className="h-full overflow-y-auto flex items-center justify-center px-6 py-10 select-none">
+        <div className="w-full max-w-md">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="h-[2px] w-9 rounded-full bg-gradient-to-r from-violet-500 to-blue-500" />
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              {t('focusTitle')}
+            </span>
           </div>
-          <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-lg">
-            <kbd className="font-mono font-bold text-foreground/50 text-[11px]">/</kbd>
-            <span>Rechercher</span>
-          </div>
-          <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-lg">
-            <kbd className="font-mono font-bold text-foreground/50 text-[11px]">r</kbd>
-            <span>Répondre</span>
-          </div>
-          <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-lg">
-            <kbd className="font-mono font-bold text-foreground/50 text-[11px]">#</kbd>
-            <span>Supprimer</span>
+
+          {focusItems.length > 0 ? (
+            <ul className="divide-y divide-border rounded-xl border border-border overflow-hidden">
+              {focusItems.map(f => (
+                <li key={`${f.accountId}-${f.uid}`}>
+                  <button
+                    onClick={() => openFocus(f)}
+                    className="w-full flex items-start gap-3 px-3.5 py-3 text-left hover:bg-muted/50 transition-colors"
+                  >
+                    <span className={cn('mt-0.5 shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-[10px] font-semibold', REASON_CLASS[f.reason])}>
+                      {REASON_ICON[f.reason]}
+                      {t(`reason_${f.reason}`)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-foreground">{f.subject || t('noSubject')}</span>
+                      <span className="block truncate text-xs text-muted-foreground mt-0.5">{f.fromName || f.fromAddress}</span>
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0 mt-1" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4">{t('focusEmpty')}</p>
+          )}
+
+          <div className="mt-6 flex flex-wrap gap-x-5 gap-y-1.5 text-[11px] text-muted-foreground/70">
+            <span className="flex items-center gap-1.5"><kbd className="font-mono font-bold text-foreground/50 text-[10px]">c</kbd> {t('compose')}</span>
+            <span className="flex items-center gap-1.5"><kbd className="font-mono font-bold text-foreground/50 text-[10px]">r</kbd> {t('reply')}</span>
+            <span className="flex items-center gap-1.5"><kbd className="font-mono font-bold text-foreground/50 text-[10px]">/</kbd> {t('search')}</span>
+            <span className="flex items-center gap-1.5"><kbd className="font-mono font-bold text-foreground/50 text-[10px]">#</kbd> {t('delete')}</span>
           </div>
         </div>
       </div>
@@ -800,7 +869,22 @@ export function ReadingPane({ uid, accountId, folder, onDelete, onReply, onReply
     )
   }
 
-  if (!message) return null
+  // Malformed / error response (e.g. a stale cache UID that no longer resolves
+  // live in this folder) — show a recoverable state instead of crashing.
+  if (error || !message || !message.from) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center select-none">
+        <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
+        <p className="text-sm text-muted-foreground">{t('loadError')}</p>
+        <button
+          onClick={() => mutate()}
+          className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
+        >
+          {t('retry')}
+        </button>
+      </div>
+    )
+  }
 
   const starred = isStarred ?? message.isStarred
   const spoofedBrand = detectSpoofedBrand(message.from.name ?? '', message.from.address ?? '')

@@ -12,6 +12,7 @@ interface UserSettings {
   reading_pane: boolean
   notifications: boolean
   undo_send_delay: number
+  start_view: string
 }
 
 const DEFAULTS: UserSettings = {
@@ -22,6 +23,7 @@ const DEFAULTS: UserSettings = {
   reading_pane: true,
   notifications: true,
   undo_send_delay: 10,
+  start_view: 'inbox',
 }
 
 export async function GET() {
@@ -30,7 +32,7 @@ export async function GET() {
 
   try {
     const rows = await query<UserSettings>(
-      `SELECT theme, language, messages_per_page, thread_view, reading_pane, notifications, undo_send_delay
+      `SELECT theme, language, messages_per_page, thread_view, reading_pane, notifications, undo_send_delay, start_view
        FROM user_settings WHERE user_id = $1`,
       [session.user.id]
     )
@@ -49,7 +51,7 @@ export async function PATCH(req: Request) {
 
     const allowed: (keyof UserSettings)[] = [
       'theme', 'language', 'messages_per_page',
-      'thread_view', 'reading_pane', 'notifications', 'undo_send_delay',
+      'thread_view', 'reading_pane', 'notifications', 'undo_send_delay', 'start_view',
     ]
 
     const updates: Partial<UserSettings> = {}
@@ -73,7 +75,7 @@ export async function PATCH(req: Request) {
     )
 
     const rows = await query<UserSettings>(
-      `SELECT theme, language, messages_per_page, thread_view, reading_pane, notifications, undo_send_delay
+      `SELECT theme, language, messages_per_page, thread_view, reading_pane, notifications, undo_send_delay, start_view
        FROM user_settings WHERE user_id = $1`,
       [session.user.id]
     )
