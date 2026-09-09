@@ -44,6 +44,7 @@
 - **Reply / Reply All / Forward**
 - **CC and BCC** — Toggle fields individually
 - **Forward with attachments** — Original attachments pre-listed as removable chips; re-fetched from IMAP server-side and sent
+- **Auto-save to Sent folder** — Every sent email (immediate or scheduled) is automatically appended to the IMAP Sent folder; works with any server (Gmail, Outlook, Stalwart, etc.)
 - **Contact autocomplete** — Addresses auto-extracted from sent/received emails; typeahead in To/Cc/Bcc fields
 - **Email signatures** — Per-account rich-text signatures with switcher; auto-insert on compose
 - **Compose templates** — Save and reuse email templates with `{{variable}}` placeholders; resolved via inline form before sending
@@ -357,9 +358,9 @@ npm run lint       # ESLint
 ### Docker (production)
 
 ```bash
-docker compose -f /mnt/stockage/docker/synapmail/docker-compose.yml up -d --build
-docker compose -f /mnt/stockage/docker/synapmail/docker-compose.yml logs -f synapmail
-docker compose -f /mnt/stockage/docker/synapmail/docker-compose.yml down
+docker compose up -d --build
+docker compose logs -f synapmail
+docker compose down
 ```
 
 ---
