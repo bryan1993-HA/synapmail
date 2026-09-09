@@ -105,6 +105,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const [page, setPage] = useState(1)
   const [accumulated, setAccumulated] = useState<Message[]>([])
+  const [refreshKey, setRefreshKey] = useState(0)
   const [readUids, setReadUids] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -204,7 +205,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
         return [...prev, ...newMsgs]
       })
     }
-  }, [data, page])
+  }, [data, page, refreshKey])
 
   const isSearchMode = debouncedSearch.length >= 2
   const messages = isSearchMode ? (searchData?.messages ?? []) : accumulated
@@ -414,7 +415,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     })
   }
 
-  const handleRefresh = () => { setPage(1); setAccumulated([]); mutate() }
+  const handleRefresh = () => { setPage(1); setRefreshKey(k => k + 1); mutate() }
   const clearSearch = () => { setSearchQuery(''); setDebouncedSearch('') }
   const hasSelection = checkedUids.size > 0
 

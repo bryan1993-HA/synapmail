@@ -4,6 +4,11 @@ import { refreshAccessToken } from './msOAuth'
 import { query } from './db'
 import { htmlToText, wrapHtmlDocument } from './html'
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const MailComposer = require('nodemailer/lib/mail-composer') as new (opts: Record<string, unknown>) => {
+  compile(): { build(cb: (err: Error | null, buf: Buffer) => void): void }
+}
+
 interface SmtpConfig {
   id?: string
   smtpHost: string
@@ -54,13 +59,14 @@ async function getSmtpAuth(config: SmtpConfig) {
   return { user: config.username, pass: decrypt(config.passwordEncrypted) }
 }
 
-export async function sendMail(config: SmtpConfig, options: SendMailOptions): Promise<{ messageId: string }> {
+export async function sendMail(config: SmtpConfig, options: SendMailOptions): Promise<{ messageId: string; raw: Buffer }> {
   const auth = await getSmtpAuth(config)
   const transporter = nodemailer.createTransport({
     host: config.smtpHost,
     port: config.smtpPort,
     secure: config.smtpSecure,
     auth,
+    tls: { rejectUnauthorized: false },
   })
 
   // Ensure outgoing HTML is a full document (avoids SpamAssassin HTML_MIME_NO_HTML_TAG)
@@ -68,8 +74,7 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
   const finalHtml = options.html ? wrapHtmlDocument(options.html) : undefined
   const finalText = options.text ?? (options.html ? htmlToText(options.html) : undefined)
 
-  await transporter.verify()
-  const info = await transporter.sendMail({
+  const mailOptions = {
     from: options.from,
     to: options.to.join(', '),
     cc: options.cc?.join(', '),
@@ -83,8 +88,18 @@ export async function sendMail(config: SmtpConfig, options: SendMailOptions): Pr
     headers: options.dispositionNotificationTo
       ? { 'Disposition-Notification-To': options.dispositionNotificationTo }
       : undefined,
+  }
+
+  // Build raw MIME buffer for IMAP append to Sent folder
+  const raw = await new Promise<Buffer>((resolve, reject) => {
+    new MailComposer(mailOptions as Record<string, unknown>).compile().build(
+      (err: Error | null, buf: Buffer) => err ? reject(err) : resolve(buf)
+    )
   })
-  return { messageId: info.messageId }
+
+  await transporter.verify()
+  const info = await transporter.sendMail(mailOptions)
+  return { messageId: info.messageId, raw }
 }
 
 export async function verifySmtp(config: SmtpConfig): Promise<boolean> {
@@ -95,6 +110,7 @@ export async function verifySmtp(config: SmtpConfig): Promise<boolean> {
       port: config.smtpPort,
       secure: config.smtpSecure,
       auth,
+      tls: { rejectUnauthorized: false },
     })
     await transporter.verify()
     return true

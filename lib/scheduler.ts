@@ -1,6 +1,6 @@
 import { query } from './db'
 import { sendMail } from './smtp'
-import { getAttachmentContent, listMessages, getMessage } from './imap'
+import { appendToSentFolder, getAttachmentContent, listMessages, getMessage } from './imap'
 import { schedulerEvents } from './schedulerEvents'
 import { upsertContactsFromAddresses } from './contacts'
 import { getEnabledRulesForAccount, applyRulesToMessages, logRuleExecution } from './rules'
@@ -102,7 +102,20 @@ export async function processScheduledEmails(): Promise<void> {
         }
       }
 
-      await sendMail(
+      const imapConfig = {
+        id: account.id,
+        imapHost: account.imap_host,
+        imapPort: account.imap_port,
+        imapSecure: account.imap_secure,
+        username: account.username,
+        passwordEncrypted: account.password_encrypted,
+        oauthProvider: account.oauth_provider,
+        oauthAccessToken: account.oauth_access_token,
+        oauthRefreshToken: account.oauth_refresh_token,
+        oauthExpiresAt: account.oauth_expires_at,
+      }
+
+      const { raw } = await sendMail(
         {
           id: account.id,
           smtpHost: account.smtp_host,
@@ -126,6 +139,9 @@ export async function processScheduledEmails(): Promise<void> {
           attachments: attachments.length ? attachments : undefined,
         }
       )
+
+      // Save to IMAP Sent folder — fire-and-forget
+      appendToSentFolder(imapConfig, raw).catch(() => {})
 
       await query(
         'UPDATE scheduled_emails SET status = $1, sent_at = NOW() WHERE id = $2',

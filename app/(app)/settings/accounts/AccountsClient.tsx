@@ -116,7 +116,12 @@ export function AccountsClient({ initialError, initialSuccess }: Props) {
           username: editForm.username, password: editForm.password,
         }),
       })
-      setTestResult(await res.json())
+      const data = await res.json()
+      if (data.imap && data.smtp) {
+        setTestResult(data)
+      } else {
+        setError(data.error ?? t('testError'))
+      }
     } catch {
       setError(t('testError'))
     } finally {

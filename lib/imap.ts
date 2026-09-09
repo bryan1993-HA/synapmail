@@ -100,6 +100,7 @@ export async function createClient(account: AccountConfig): Promise<ImapFlow> {
     secure: account.imapSecure,
     auth: authOpts,
     logger: false,
+    tls: { rejectUnauthorized: false },
     // Fail fast on connection issues instead of hanging on imapflow's long
     // defaults (~90s to connect). A slow/unreachable IMAP host or a bad greeting
     // now errors within ~10s, so the API returns an error quickly rather than
@@ -448,6 +449,24 @@ export async function getAttachmentContent(
       filename: attachment.filename ?? `attachment-${partIdx}`,
       contentType: attachment.contentType ?? 'application/octet-stream',
     }
+  } finally {
+    await client.logout()
+  }
+}
+
+export async function appendToSentFolder(account: AccountConfig, raw: Buffer): Promise<void> {
+  const client = await createClient(account)
+  try {
+    const folders = await client.list()
+    // Prefer folder with \Sent special-use flag, fall back to common names
+    const sentFolder = folders.find(f =>
+      (f as unknown as Record<string, unknown>).specialUse === '\\Sent' ||
+      f.flags?.has('\\Sent')
+    ) ?? folders.find(f =>
+      ['sent', 'sent items', 'sent messages'].includes(f.name.toLowerCase())
+    )
+    if (!sentFolder) return
+    await client.append(sentFolder.path, raw, ['\\Seen'])
   } finally {
     await client.logout()
   }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
 import { sendMail } from '@/lib/smtp'
+import { appendToSentFolder } from '@/lib/imap'
 import { upsertContactsFromAddresses } from '@/lib/contacts'
 import { randomUUID } from 'crypto'
 
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
 
     const accounts = await query<{
       id: string; email: string;
+      imap_host: string; imap_port: number; imap_secure: boolean;
       smtp_host: string; smtp_port: number; smtp_secure: boolean;
       username: string; password_encrypted: string;
       oauth_provider: string | null; oauth_access_token: string | null;
@@ -55,7 +57,7 @@ export async function POST(req: Request) {
       trackedHtml = injectTrackingPixel(html, `${appUrl}/api/track/${token}`)
     }
 
-    const { messageId } = await sendMail(
+    const { messageId, raw } = await sendMail(
       {
         id: account.id,
         smtpHost: account.smtp_host,
@@ -81,6 +83,23 @@ export async function POST(req: Request) {
         dispositionNotificationTo: requestReadReceipt ? account.email : undefined,
       }
     )
+
+    // Append to IMAP Sent folder — fire-and-forget
+    appendToSentFolder(
+      {
+        id: account.id,
+        imapHost: account.imap_host,
+        imapPort: account.imap_port,
+        imapSecure: account.imap_secure,
+        username: account.username,
+        passwordEncrypted: account.password_encrypted,
+        oauthProvider: account.oauth_provider,
+        oauthAccessToken: account.oauth_access_token,
+        oauthRefreshToken: account.oauth_refresh_token,
+        oauthExpiresAt: account.oauth_expires_at,
+      },
+      raw
+    ).catch(() => {})
 
     // Store tracking record — fire-and-forget
     const userId = session.user?.id
