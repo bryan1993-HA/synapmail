@@ -114,7 +114,18 @@ function Card({
 
 /* ─── activity chart ───────────────────────────────────────── */
 
-function ActivityChart({ data }: { data: ActivityPoint[] }) {
+const REC_COLOR = '#8b5cf6'   // violet — reçus
+const SENT_COLOR = '#10b981'  // emerald — envoyés
+
+function ActivityChart({
+  data, locale, recLabel, sentLabel,
+}: {
+  data: ActivityPoint[]
+  locale: string
+  recLabel: string
+  sentLabel: string
+}) {
+  const [hover, setHover] = useState<number | null>(null)
   const W = 600, top = 22, base = 150
   const padX = 12
   const n = Math.max(1, data.length - 1)
@@ -126,34 +137,80 @@ function ActivityChart({ data }: { data: ActivityPoint[] }) {
   const area = (key: 'received' | 'sent') =>
     `${path(key)} L ${x(data.length - 1).toFixed(1)} ${base} L ${x(0).toFixed(1)} ${base} Z`
   const last = data[data.length - 1] ?? { received: 0, sent: 0 }
+  const hv = hover != null ? data[hover] : null
+
+  const fmtDay = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
+
+  const leftPct = hover != null ? (x(hover) / W) * 100 : 0
+  const tipTx = leftPct < 22 ? '0' : leftPct > 78 ? '-100%' : '-50%'
 
   return (
-    <svg viewBox={`0 0 ${W} 172`} width="100%" style={{ aspectRatio: '600 / 172' }} role="img"
-      aria-label="Received and sent, last 14 days">
-      <defs>
-        <linearGradient id="dash-rec" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#8b5cf6" stopOpacity="0.28" />
-          <stop offset="1" stopColor="#8b5cf6" stopOpacity="0" />
-        </linearGradient>
-        <linearGradient id="dash-sent" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#3b82f6" stopOpacity="0.22" />
-          <stop offset="1" stopColor="#3b82f6" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[46, 98, 150].map(gy => (
-        <line key={gy} x1={padX} y1={gy} x2={W - padX} y2={gy} className="stroke-border" strokeWidth="1" />
-      ))}
-      <path d={area('received')} fill="url(#dash-rec)" />
-      <path d={area('sent')} fill="url(#dash-sent)" />
-      <path d={path('received')} fill="none" stroke="#8b5cf6" strokeWidth="2.4"
-        strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-      <path d={path('sent')} fill="none" stroke="#3b82f6" strokeWidth="2.4"
-        strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-      <circle cx={x(data.length - 1)} cy={y(last.received)} r="3.6" fill="#8b5cf6"
-        className="stroke-card" strokeWidth="2" />
-      <circle cx={x(data.length - 1)} cy={y(last.sent)} r="3.6" fill="#3b82f6"
-        className="stroke-card" strokeWidth="2" />
-    </svg>
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} 172`} width="100%" style={{ aspectRatio: '600 / 172' }} role="img"
+        aria-label={`${recLabel} / ${sentLabel} — 14 j`}>
+        <defs>
+          <linearGradient id="dash-rec" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={REC_COLOR} stopOpacity="0.28" />
+            <stop offset="1" stopColor={REC_COLOR} stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="dash-sent" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={SENT_COLOR} stopOpacity="0.24" />
+            <stop offset="1" stopColor={SENT_COLOR} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[46, 98, 150].map(gy => (
+          <line key={gy} x1={padX} y1={gy} x2={W - padX} y2={gy} className="stroke-border" strokeWidth="1" />
+        ))}
+        <path d={area('received')} fill="url(#dash-rec)" />
+        <path d={area('sent')} fill="url(#dash-sent)" />
+        <path d={path('received')} fill="none" stroke={REC_COLOR} strokeWidth="2.4"
+          strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <path d={path('sent')} fill="none" stroke={SENT_COLOR} strokeWidth="2.4"
+          strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+
+        {hover != null ? (
+          <g>
+            <line x1={x(hover)} y1={top - 6} x2={x(hover)} y2={base}
+              className="stroke-border" strokeWidth="1" strokeDasharray="3 3" />
+            <circle cx={x(hover)} cy={y(data[hover].received)} r="4" fill={REC_COLOR} className="stroke-card" strokeWidth="2" />
+            <circle cx={x(hover)} cy={y(data[hover].sent)} r="4" fill={SENT_COLOR} className="stroke-card" strokeWidth="2" />
+          </g>
+        ) : (
+          <g>
+            <circle cx={x(data.length - 1)} cy={y(last.received)} r="3.6" fill={REC_COLOR} className="stroke-card" strokeWidth="2" />
+            <circle cx={x(data.length - 1)} cy={y(last.sent)} r="3.6" fill={SENT_COLOR} className="stroke-card" strokeWidth="2" />
+          </g>
+        )}
+
+        <rect x="0" y="0" width={W} height="172" fill="transparent" style={{ touchAction: 'pan-y' }}
+          onPointerMove={e => {
+            const r = e.currentTarget.getBoundingClientRect()
+            const px = ((e.clientX - r.left) / r.width) * W
+            const i = Math.round((px - padX) / ((W - 2 * padX) / n))
+            setHover(Math.max(0, Math.min(data.length - 1, i)))
+          }}
+          onPointerLeave={() => setHover(null)}
+        />
+      </svg>
+
+      {hv && (
+        <div
+          className="pointer-events-none absolute top-0 z-10 min-w-[128px] whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md"
+          style={{ left: `${leftPct}%`, transform: `translateX(${tipTx})` }}
+        >
+          <div className="mb-1 font-medium capitalize text-foreground">{fmtDay(hv.date)}</div>
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <span className="h-2 w-2 rounded-[2px]" style={{ background: REC_COLOR }} />
+            {recLabel}<span className="ml-auto font-mono font-semibold text-foreground">{hv.received}</span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">
+            <span className="h-2 w-2 rounded-[2px]" style={{ background: SENT_COLOR }} />
+            {sentLabel}<span className="ml-auto font-mono font-semibold text-foreground">{hv.sent}</span>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -280,7 +337,7 @@ export function DashboardClient() {
 
   const maxUnread = Math.max(1, ...d.accounts.map(a => a.unread))
   const maxRule = Math.max(1, ...d.rules.items.map(r => r.matched7d))
-  const totalRecv = d.activity.reduce((s, p) => s + p.received, 0)
+  const totalSent = d.activity.reduce((s, p) => s + p.sent, 0)
   const half = Math.max(1, Math.round(d.activity.length / 2))
   const firstHalf = d.activity.slice(0, half).reduce((s, p) => s + p.received, 0)
   const secondHalf = d.activity.slice(half).reduce((s, p) => s + p.received, 0)
@@ -382,7 +439,7 @@ export function DashboardClient() {
           <Kpi
             index={1} accent="bg-blue-500" icon={<Send className="h-3.5 w-3.5" />}
             label={t('kpiSent')} value={sent}
-            sub={<span className="text-muted-foreground">{totalRecv > 0 ? `${totalRecv} ${t('activityReceived').toLowerCase()} / 14 j` : '—'}</span>}
+            sub={<span className="text-muted-foreground">{totalSent > 0 ? `${totalSent} ${t('activitySent').toLowerCase()} / 14 j` : '—'}</span>}
           />
           <Kpi
             index={2} accent="bg-emerald-500" icon={<Eye className="h-3.5 w-3.5" />}
@@ -466,10 +523,15 @@ export function DashboardClient() {
               </span>
             }
           >
-            <ActivityChart data={d.activity} />
+            <ActivityChart
+              data={d.activity}
+              locale={locale}
+              recLabel={t('activityReceived')}
+              sentLabel={t('activitySent')}
+            />
             <div className="mt-1.5 flex gap-4 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-violet-500" /> {t('activityReceived')}</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-blue-500" /> {t('activitySent')}</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-emerald-500" /> {t('activitySent')}</span>
               <span className="ml-auto font-mono">{t('activityStart')}</span>
             </div>
           </Card>

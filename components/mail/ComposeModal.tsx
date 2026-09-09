@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
-import type { Signature } from '@/types/account'
+import type { Signature, EmailAccount } from '@/types/account'
 import type { Attachment } from '@/types/email'
 import type { ComposeTemplate } from '@/types/template'
 import { EmailTokenInput } from './EmailTokenInput'
@@ -147,6 +147,13 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
   const { data: sigData } = useSWR<{ data: Signature[] }>('/api/signatures', fetcher)
   const { data: settingsData } = useSWR<{ data: AppSettings }>('/api/settings', fetcher)
   const { data: tplData } = useSWR<{ data: ComposeTemplate[] }>('/api/templates', fetcher)
+  const { data: acctData } = useSWR<{ data: EmailAccount[] }>('/api/accounts', fetcher)
+  const accounts = acctData?.data ?? []
+
+  // Compte d'envoi — modifiable par message quand l'utilisateur a plusieurs comptes
+  const [fromAccountId, setFromAccountId] = useState(accountId)
+  const fromAccount = accounts.find(a => a.id === fromAccountId)
+  const fromEmail = fromAccount?.email ?? accountEmail
   const undoSendDelay = settingsData?.data?.undo_send_delay ?? 0
 
   useEffect(() => {
@@ -386,7 +393,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
     const bodyHtml = (editor?.getHTML() ?? '') + quotedHtml()
     const payload: Record<string, unknown> = {
-      accountId,
+      accountId: fromAccountId,
       to: toTokens,
       cc: ccTokens.length ? ccTokens : undefined,
       bcc: bccTokens.length ? bccTokens : undefined,
@@ -531,6 +538,23 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
         {/* ── Fields ──────────────────────────────────────────────────── */}
         <div className="bg-background px-5 pt-4 pb-0 shrink-0 space-y-0">
+          {/* From — only when several accounts */}
+          {accounts.length > 1 && (
+            <div className="flex items-center gap-3 py-2 border-b border-border min-h-[40px]">
+              <span className="text-xs font-medium text-muted-foreground w-10 shrink-0 uppercase tracking-wide">De</span>
+              <select
+                value={fromAccountId}
+                onChange={e => setFromAccountId(e.target.value)}
+                className="flex-1 min-w-0 bg-transparent text-sm text-foreground outline-none py-1 -ml-1 pl-1 rounded focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} · {a.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {/* To */}
           <div className="flex items-start gap-3 py-2 border-b border-border min-h-[40px]">
             <span className="text-xs font-medium text-muted-foreground w-10 shrink-0 uppercase tracking-wide mt-1.5">À</span>
@@ -953,7 +977,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
             </div>
           )}
 
-          <span className="text-xs text-muted-foreground">{accountEmail}</span>
+          <span className="text-xs text-muted-foreground truncate" title={fromEmail}>{fromEmail}</span>
         </div>
       </div>
     </div>
