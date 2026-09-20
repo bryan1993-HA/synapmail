@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
 import { encrypt } from '@/lib/encrypt'
+import { isBadgeColor } from '@/lib/accountColor'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,8 +18,14 @@ export async function PATCH(
     const {
       name, email, imapHost, imapPort, imapSecure,
       smtpHost, smtpPort, smtpSecure, username, password,
-      isDefault, color,
+      isDefault, color, promptGuard, badgeColor,
     } = body
+
+    // The colour is the only field the user types by hand, so it is the only one the
+    // server re-validates: `null` puts the mailbox back on the automatic palette.
+    if (badgeColor !== undefined && badgeColor !== null && !isBadgeColor(badgeColor)) {
+      return NextResponse.json({ error: 'Invalid badgeColor' }, { status: 400 })
+    }
 
     // Verify ownership
     const existing = await query(
@@ -56,6 +63,8 @@ export async function PATCH(
     set('username', username)
     set('is_default', isDefault)
     set('color', color)
+    set('prompt_guard', promptGuard)
+    set('badge_color', badgeColor)
     if (password) {
       fields.push(`password_encrypted = $${idx++}`)
       values.push(encrypt(password))
@@ -65,7 +74,7 @@ export async function PATCH(
 
     values.push(params.id)
     const result = await query(
-      `UPDATE email_accounts SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, name, email, is_default, color`,
+      `UPDATE email_accounts SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, name, email, is_default, color, prompt_guard AS "promptGuard", badge_color AS "badgeColor"`,
       values
     )
 

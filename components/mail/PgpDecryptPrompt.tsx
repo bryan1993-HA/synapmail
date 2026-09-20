@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Lock, LockOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { decryptText, getStoredIdentity } from '@/lib/pgp'
 import { usePgpSession } from '@/components/pgp/PgpSessionProvider'
 
@@ -67,12 +67,11 @@ export function PgpDecryptPrompt({
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">{t('passphrasePrompt')}</p>
           <div className="flex flex-wrap items-center gap-2">
-            <Input
-              type="password"
+            <PasswordInput
               value={passphrase}
               onChange={e => setPassphrase(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') runDecrypt() }}
-              className="h-8 text-sm max-w-xs"
+              className="h-8 text-sm" containerClassName="max-w-xs"
               autoFocus
             />
             <Button size="sm" onClick={runDecrypt} disabled={busy || !passphrase}>

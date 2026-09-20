@@ -8,6 +8,66 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Discreet scrollbar for the app's own scroll containers — the native bar is
+     never shown. Both the Firefox and the WebKit branch derive the thumb from
+     `currentColor`, so a container inherits the contrast of whatever surface it
+     sits on (dark bar, light panel) without a second palette to keep in sync.
+     The track stays transparent so no gutter appears when nothing overflows. */
+  /* Ink of a scrollbar thumb, native (`.scroll-thin`) or drawn (`.scroll-thumb`,
+     painted by ThinScroll): ONE expression both branches read, so the discreet bar
+     cannot drift between the two. */
+  .scroll-thin,
+  .scroll-thumb {
+    --scroll-thumb-ink: color-mix(in srgb, currentColor 22%, transparent);
+  }
+  /* The drawn thumb of a `ThinScroll`. A Tailwind opacity modifier is NOT usable
+     here: this project maps its colour tokens to raw `var(--x)` values with no
+     `<alpha-value>` placeholder, so `bg-foreground/25` compiles to nothing and the
+     thumb stays fully transparent (measured: rgba(0, 0, 0, 0)). */
+  .scroll-thumb {
+    background: var(--scroll-thumb-ink);
+  }
+
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb-ink) transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scroll-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+    background: var(--scroll-thumb-ink);
+  }
+  /* Hover/active only darken the existing thumb: the bar never changes width,
+     so revealing it cannot reflow the content it scrolls. */
+  .scroll-thin:hover {
+    scrollbar-color: color-mix(in srgb, currentColor 38%, transparent) transparent;
+  }
+  .scroll-thin:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, currentColor 38%, transparent);
+  }
+  .scroll-thin::-webkit-scrollbar-thumb:active {
+    background: color-mix(in srgb, currentColor 55%, transparent);
+  }
+  .scroll-thin::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Viewport of a `ThinScroll`: the native bar is hidden because it cannot fade —
+     neither `::-webkit-scrollbar` nor `scrollbar-color` is animatable. The visible
+     thumb is drawn by the component, which owns its width and its fade timing. */
+  .scroll-hidden {
+    scrollbar-width: none;
+  }
+  .scroll-hidden::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Compose modal — "Aurora" ambient drift */
@@ -118,6 +178,34 @@
     --list-width: 320px;
   }
 
+  /*
+   * The seven flag colours (Apple Mail convention). They live here because a flag's
+   * colour IS the information: a utility class would only exist if Tailwind read it
+   * from a file it scans, which is not the case for lib/flags.ts. The keys come from
+   * MAIL_FLAGS.
+   * Hues chosen to stay >= 3:1 (WCAG 1.4.11) against the surfaces the flag is painted
+   * on — card, menu and selected-row backgrounds — and to stay distinct from each
+   * other and from the text colour, in both themes.
+   */
+  :root {
+    --flag-red: #dc2626;
+    --flag-orange: #cf4a0a;
+    --flag-yellow: #a16207;
+    --flag-green: #15803d;
+    --flag-blue: #2563eb;
+    --flag-purple: #9333ea;
+    --flag-gray: #52525b;
+  }
+  .dark {
+    --flag-red: #f87171;
+    --flag-orange: #fb923c;
+    --flag-yellow: #facc15;
+    --flag-green: #4ade80;
+    --flag-blue: #60a5fa;
+    --flag-purple: #c084fc;
+    --flag-gray: #a1a1aa;
+  }
+
   * {
     @apply border-border;
     outline-color: color-mix(in srgb, var(--ring) 50%, transparent);
@@ -129,3 +217,9 @@
     @apply font-sans;
   }
 }
+/* Icon flip for the collapsed theme toggle (duration set inline from THEME_TOGGLE_TRANSITION_MS). */
+@keyframes theme-flip {
+  from { transform: rotateY(90deg); opacity: 0; }
+  to { transform: rotateY(0deg); opacity: 1; }
+}
+.theme-flip { animation-name: theme-flip; animation-timing-function: ease-out; animation-fill-mode: both; }

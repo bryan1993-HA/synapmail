@@ -30,7 +30,7 @@
       "submit": "Accepter l'invitation",
       "passwordMismatch": "Les mots de passe ne correspondent pas",
       "invalidToken": "Cette invitation est invalide ou a expiré",
-      "success": "Compte créé — redirection vers la connexion…",
+      "success": "Compte créé. Redirection vers la connexion…",
       "backToLogin": "Retour à la connexion"
     }
   },
@@ -47,6 +47,8 @@
     "compose": "Nouveau message",
     "templates": "Templates",
     "settings": "Paramètres",
+    "userMenu": "Compte",
+    "signOut": "Se déconnecter",
     "noMessages": "Aucun message",
     "loadError": "Impossible de charger les messages",
     "loadErrorDesc": "Une erreur s'est produite. Vérifiez la connexion au compte, puis réessayez.",
@@ -64,6 +66,13 @@
     "reply": "Répondre",
     "replyAll": "Répondre à tous",
     "forward": "Transférer",
+    "forwardedSubject": "Fwd : {count} messages",
+    "forwardedAttached": "{count} messages joints",
+    "forwardInvalid": "Cette demande de transfert est invalide.",
+    "forwardTooMany": "Vous pouvez transférer au plus {count} messages à la fois.",
+    "forwardTooLarge": "Ces messages dépassent la limite de {count} Mo de pièces jointes.",
+    "forwardMissing": "{count, plural, one {# des messages sélectionnés n’est plus dans ce dossier} other {# des messages sélectionnés ne sont plus dans ce dossier}}. Rien n’a été envoyé.",
+    "forwardOriginDenied": "La boîte d’où viennent ces messages n’est plus accessible.",
     "delete": "Supprimer",
     "archive2": "Archiver",
     "markRead": "Marquer comme lu",
@@ -85,7 +94,9 @@
     "dashboard": "Tableau de bord",
     "search": "Rechercher",
     "searchAccounts": "Rechercher un compte…",
+    "searchMail": "Rechercher dans le courrier",
     "noAccountMatch": "Aucun compte correspondant",
+    "accountTooltip": "{name} · {email}",
     "unreadOtherAccounts": "{count} non lus sur les autres comptes",
     "grpToday": "Aujourd'hui",
     "grpYesterday": "Hier",
@@ -112,7 +123,84 @@
     "reason_vip": "Contact clé",
     "reason_frequent": "Fréquent",
     "reason_starred": "Suivi",
-    "reason_attachment": "Pièce jointe"
+    "reason_attachment": "Pièce jointe",
+    "collapseSidebar": "Réduire la barre latérale",
+    "expandSidebar": "Agrandir la barre latérale",
+    "folders": "Dossiers",
+    "switchAccount": "Changer de compte",
+    "searchAllFolders": "Tous les dossiers",
+    "searchThisFolder": "Ce dossier",
+    "clearSearch": "Effacer la recherche",
+    "searchResults": "{count, plural, one {# résultat} other {# résultats}} pour « {query} »",
+    "searching": "Recherche…",
+    "noSearchResults": "Aucun résultat",
+    "searchFieldsLabel": "expéditeur, destinataires, objet",
+    "searchTruncated": "{shown} premiers résultats sur {total}",
+    "searchCount": "{count, plural, one {# résultat} other {# résultats}}",
+    "searchShown": "{shown} affichés",
+    "searchDetails": "Cherché dans : {fields} · {scope}",
+    "searchProgress": "{searched, plural, one {# dossier} other {# dossiers}} sur {folders}",
+    "searchStop": "Arrêter",
+    "searchNoBodyHint": "Le corps des messages n’est pas cherché (limite du serveur de messagerie). Essayez un mot de l’objet ou une adresse.",
+    "refresh": "Relever",
+    "flag": "Drapeau",
+    "moreActions": "Plus d’actions",
+    "selectionCount": "{count} sélectionnés",
+    "confirmDeleteSelection": "Supprimer {count} messages ?",
+    "flagged": "Avec drapeau",
+    "flagRemove": "Retirer le drapeau",
+    "flags": {
+      "red": "Rouge",
+      "orange": "Orange",
+      "yellow": "Jaune",
+      "green": "Vert",
+      "blue": "Bleu",
+      "purple": "Violet",
+      "gray": "Gris"
+    },
+    "noFolders": "Aucun dossier",
+    "messageList": "Liste des messages",
+    "folderNew": "Nouveau dossier…",
+    "folderNewChild": "Nouveau sous-dossier…",
+    "folderRename": "Renommer…",
+    "folderMarkRead": "Tout marquer comme lu",
+    "folderEmpty": "Vider",
+    "folderDelete": "Supprimer le dossier…",
+    "folderNamePlaceholder": "Nom du dossier",
+    "folderNameInvalid": "Ce nom ne peut pas être utilisé. Pas de « {delimiter} », pas de nom vide, 255 caractères au plus.",
+    "folderConfirmDelete": "Supprimer « {name} » et ses {count} messages ?",
+    "folderConfirmEmpty": "Supprimer définitivement les {count} messages de « {name} » ?",
+    "folderHasChildren": "Ce dossier contient des sous-dossiers. Supprimez-les d’abord.",
+    "folderActionFailed": "Action impossible sur le dossier",
+    "ai": {
+      "errors": {
+        "server": "L'assistant n'a pas pu être joint.",
+        "unreachable": "Aucun modèle local n'écoute à cette adresse sur cet appareil.",
+        "cors": "Un modèle local a répondu mais votre navigateur l'a bloqué : autorisez l'origine {origin}.",
+        "model": "Le modèle local a renvoyé une erreur.",
+        "permission": "Votre navigateur a bloqué l'accès aux applications de cet appareil."
+      },
+      "access": {
+        "prompt": "Votre navigateur va demander l'autorisation d'accéder aux applications de cet appareil. Acceptez-la pour continuer.",
+        "deniedStep1": "Cliquez sur l'icône à gauche de la barre d'adresse, puis ouvrez les réglages du site.",
+        "deniedStep2": "Autorisez l'accès au réseau local (les applications de cet appareil), puis réessayez."
+      },
+      "actions": {
+        "summarize": "Résumer",
+        "reply": "Répondre avec l'IA",
+        "improve": "Améliorer / Ton",
+        "translate": "Traduire"
+      },
+      "translateToFr": "En français",
+      "translateToEn": "En anglais",
+      "tasks": "Tâches",
+      "priority": "Priorité",
+      "soonBadge": "Bientôt",
+      "soonTitle": "Bientôt disponible",
+      "resultSummary": "Résumé",
+      "resultTranslation": "Traduction",
+      "resultReply": "Brouillon IA, ouvert dans la composition"
+    }
   },
   "compose": {
     "newMessage": "Nouveau message",
@@ -190,11 +278,26 @@
       "saved": "Enregistré",
       "unsaved": "Modifications non enregistrées"
     },
+    "rowActions": {
+      "menu": "Actions pour {name}",
+      "edit": "Modifier",
+      "apiKeyRevoke": "Révoquer cette clé…",
+      "apiKeyRevokeConfirm": "Révoquer la clé « {name} » ? Toute application qui l’utilise perd l’accès immédiatement, et une clé révoquée ne se récupère pas.",
+      "contactDelete": "Supprimer ce contact…",
+      "contactDeleteConfirm": "Supprimer le contact « {name} » de ce webmail ? Il sera de nouveau proposé au prochain échange de messages.",
+      "signatureDelete": "Supprimer cette signature…",
+      "signatureDeleteConfirm": "Supprimer la signature « {name} » ? Les messages déjà envoyés la gardent, mais elle ne se récupère pas ici.",
+      "templateDelete": "Supprimer ce modèle…",
+      "templateDeleteConfirm": "Supprimer le modèle « {name} » ? Il ne se récupère pas.",
+      "pgpKeyDelete": "Supprimer cette clé…",
+      "pgpKeyDeleteConfirm": "Supprimer la clé publique de {name} ? Vous ne pourrez plus lui écrire de message chiffré tant que vous ne l’aurez pas réimportée.",
+      "ruleDelete": "Supprimer cette règle…",
+      "ruleDeleteConfirm": "Supprimer la règle « {name} » ? Les messages qu’elle a déjà triés restent où ils sont, mais la règle ne se récupère pas."
+    },
     "accounts": {
       "title": "Comptes email",
       "add": "Ajouter un compte",
       "edit": "Modifier",
-      "delete": "Supprimer",
       "setDefault": "Définir par défaut",
       "name": "Nom du compte",
       "email": "Adresse email",
@@ -211,8 +314,14 @@
       "save": "Enregistrer",
       "cancel": "Annuler",
       "color": "Couleur",
+      "colorAuto": "Automatique",
+      "colorCustom": "Couleur personnalisée",
+      "colorHex": "Code hexadécimal",
+      "colorInvalid": "Utilisez une couleur comme #0ea5e9",
       "noAccounts": "Aucun compte email configuré",
       "noAccountsDesc": "Ajoutez votre premier compte email pour commencer",
+      "promptGuard": "Protection contre l'injection d'instructions",
+      "promptGuardDesc": "Signale aux agents qui lisent cette boîte via l'API que le contenu des messages est une donnée non fiable, qui ne doit jamais être exécutée, et repère les demandes cachées à l'œil. Couche de défense supplémentaire, pas une garantie.",
       "shares": {
         "title": "Partage",
         "noShares": "Ce compte n'est partagé avec personne",
@@ -220,8 +329,6 @@
         "expiryLabel": "Expiration (optionnel)",
         "sendInvite": "Envoyer l'invitation",
         "inviteFailed": "Échec de l'envoi de l'invitation",
-        "revoke": "Révoquer",
-        "revokeConfirm": "Révoquer l'accès de cet invité ?",
         "emailSendFailedWarning": "L'invitation a été créée mais l'email n'a pas pu être envoyé.",
         "expiresOn": "Expire le {date}",
         "status": {
@@ -236,7 +343,36 @@
           "canOrganize": "Organiser (marquer, déplacer, reporter)",
           "canManageRules": "Gérer les règles",
           "canManageSignatures": "Gérer les signatures"
-        }
+        },
+        "rowMenu": "Actions pour {name}",
+        "revokeLabel": "Retirer l’accès…",
+        "revokeNamed": "Retirer l’accès de {email} à cette boîte ? Il le perd immédiatement ; vous pourrez l’inviter à nouveau."
+      },
+      "receivedShares": {
+        "title": "Boîtes partagées avec moi",
+        "empty": "Personne ne vous a partagé de boîte",
+        "sharedBy": "Partagée par {name}",
+        "leaveFailed": "Le retrait du partage a échoué",
+        "rowMenu": "Actions pour {name}",
+        "leaveLabel": "Quitter ce partage…",
+        "leaveNamed": "Quitter la boîte « {email} » partagée par {owner} ? Vous en perdez l’accès ; le propriétaire pourra la repartager."
+      },
+      "rowMenu": "Actions pour {name}",
+      "deleteAccount": "Supprimer le compte…",
+      "deleteConfirm": "Supprimer le compte « {email} » de ce webmail ? Les mails restent chez votre hébergeur, seul l’accès depuis ici est retiré.",
+      "share": "Partager",
+      "passwordUnchanged": "(inchangé)",
+      "passwordUnchangedHelp": "Laisser vide pour ne pas changer le mot de passe enregistré.",
+      "tested": {
+        "stored": "Testé avec le mot de passe enregistré.",
+        "submitted": "Testé avec le nouveau mot de passe que vous avez saisi.",
+        "oauth": "Rien à tester ici : cette boîte se connecte par jeton, pas par mot de passe."
+      },
+      "testFailure": {
+        "credentials": "le serveur a refusé ces identifiants",
+        "unreachable": "le serveur est injoignable",
+        "other": "le serveur a refusé la connexion",
+        "password_required": "Vous avez changé le serveur ou l'identifiant : saisissez le mot de passe pour tester ces nouveaux réglages."
       }
     },
     "profile": {
@@ -278,6 +414,7 @@
       "light": "Clair",
       "dark": "Sombre",
       "system": "Système",
+      "cycleTheme": "Thème : {current}. Cliquer pour passer à {next}",
       "language": "Langue",
       "languageDesc": "Langue de l'interface (nécessite un rechargement)"
     },
@@ -324,7 +461,84 @@
       "runNow": "Exécuter maintenant",
       "noRules": "Aucune règle configurée",
       "noRulesDesc": "Les règles s'appliquent automatiquement aux nouveaux emails.",
-      "templates": "Démarrage rapide — Modèles"
+      "templates": "Démarrage rapide, modèles"
+    },
+    "ai": {
+      "pageDescription": "Résumés, réponses suggérées et tri intelligent",
+      "configured": "Configuré",
+      "stepProvider": "1. Fournisseur",
+      "stepAccess": "2. Accès",
+      "tagline": {
+        "serverKey": "API avec clé (appel depuis le serveur)",
+        "ollamaServer": "Ollama joignable depuis le serveur",
+        "local": "Appel depuis le navigateur, rien ne sort de votre poste"
+      },
+      "provider": {
+        "local": "Local, sur cet appareil"
+      },
+      "detectOllamaMissing": "Ollama non trouvé DEPUIS LE SERVEUR. S'il tourne sur votre ordinateur, choisissez « Local, sur cet appareil » : l'appel partira du navigateur.",
+      "testOk": "Connexion OK. Réponse : « {answer} »",
+      "local": {
+        "urlLabel": "Adresse locale",
+        "modelHint": "Ollama, LM Studio ou llama.cpp démarré sur votre ordinateur",
+        "remoteRefused": "Adresse distante : pour une adresse distante, choisissez l'API avec clé.",
+        "detectFound": "{label} trouvé sur {url}",
+        "startModel": "Démarrer le modèle sur cet ordinateur (ollama serve, LM Studio, llama.cpp).",
+        "checkAddress": "Vérifier l'adresse : {url} pour Ollama.",
+        "remoteNeedsKey": "Le modèle doit tourner sur CE poste : une adresse distante demande une API avec clé.",
+        "corsLmStudio": "LM Studio : activer CORS dans le serveur local, avec l'origine {origin}.",
+        "corsSafari": "Safari bloque cet appel : utilisez Chrome, Edge ou Firefox.",
+        "os": {
+          "mac": "macOS",
+          "windows": "Windows (PowerShell)",
+          "linux": "Linux (systemd)"
+        },
+        "corsRefusesSite": "{label} répond sur le port {port} mais refuse ce site.",
+        "corsIntro": "Ollama ne répond qu'aux pages servies depuis votre ordinateur. Lancez cette commande une fois sur le vôtre pour autoriser ce site : Ollama redémarre ensuite tout seul.",
+        "thenDetectAgain": "Puis cliquez de nouveau sur Détecter.",
+        "otherSystems": "Autres systèmes",
+        "copy": "Copier",
+        "copied": "Copié",
+        "originRefused": "L'adresse de cette page ne peut pas être autorisée par une commande.",
+        "loopbackOnly": "La détection ne regarde que cet ordinateur (ports 11434, 1234, 8080) : le réseau local n’est pas balayé."
+      },
+      "detect": "Détecter automatiquement",
+      "detecting": "Détection",
+      "detectError": "Erreur lors de la détection",
+      "model": "Modèle",
+      "saveAndTest": "Enregistrer et tester",
+      "saving": "Enregistrement",
+      "testing": "Test",
+      "saved": "Enregistré",
+      "failed": "Erreur",
+      "advanced": "Paramètres avancés",
+      "systemPrompt": "Prompt système",
+      "systemPromptPlaceholder": "Par exemple : tu es un assistant email professionnel. Réponds toujours de manière concise.",
+      "features": "Fonctionnalités",
+      "soonTitle": "Prochainement",
+      "soonBadge": "Bientôt",
+      "keySaved": "(clé déjà enregistrée)",
+      "getKey": "Obtenir une clé",
+      "keyLabel": {
+        "anthropic": "Clé API Anthropic",
+        "openai": "Clé API OpenAI",
+        "optional": "Clé API (si requise)"
+      },
+      "urlLabel": {
+        "ollama": "URL Ollama",
+        "server": "URL du serveur"
+      },
+      "modelHint": {
+        "custom": "Nom du modèle accepté par votre endpoint"
+      },
+      "soon": {
+        "inlineCompletion": "Complétion inline",
+        "priorityScore": "Score de priorité automatique",
+        "taskExtraction": "Extraction des tâches",
+        "mailboxChat": "Chat avec la boîte mail",
+        "smartRules": "Règles IA intelligentes",
+        "personas": "Personas par compte"
+      }
     }
   },
   "admin": {
@@ -341,6 +555,25 @@
       "actions": "Actions",
       "delete": "Supprimer",
       "confirmDelete": "Êtes-vous sûr de vouloir supprimer cet utilisateur ?"
+    },
+    "branding": {
+      "title": "Identité",
+      "description": "Le nom et l'icône que cette instance affiche dans l'onglet du navigateur, pour tout le monde.",
+      "nameLabel": "Nom",
+      "iconLabel": "Icône de l'onglet",
+      "iconHint": "PNG, ICO, JPEG ou WebP, 256 Kio au plus.",
+      "choose": "Choisir un fichier",
+      "save": "Enregistrer",
+      "saving": "Enregistrement",
+      "saved": "Enregistré",
+      "resetName": "Rétablir le nom par défaut",
+      "resetIcon": "Rétablir l'icône par défaut",
+      "preview": "Aperçu",
+      "errors": {
+        "branding_too_large": "Ce fichier dépasse 256 Kio.",
+        "branding_bad_type": "Ce fichier n'est pas une image PNG, ICO, JPEG ou WebP.",
+        "branding_bad_name": "Saisissez un nom de 1 à 60 caractères."
+      }
     }
   },
   "contacts": {
@@ -377,7 +610,7 @@
     "available": "Synapmail {version} est disponible",
     "moreInfo": "Plus d'informations",
     "dismiss": "Ignorer",
-    "modalTitle": "Mise à jour disponible — {version}",
+    "modalTitle": "Mise à jour disponible, {version}",
     "tabReleases": "Nouveautés",
     "tabHowTo": "Comment mettre à jour",
     "noNotes": "Aucune note de version.",
@@ -394,7 +627,7 @@
       "step4Title": "Vérifier que tout démarre correctement",
       "step4Desc": "Attendez de voir \"Ready\" dans les logs. Ctrl+C pour quitter le suivi.",
       "dataTitle": "Vos données sont en sécurité.",
-      "dataDesc": "La base de données PostgreSQL est dans un volume Docker séparé — elle n'est jamais supprimée lors d'un rebuild."
+      "dataDesc": "La base de données PostgreSQL est dans un volume Docker séparé. Elle n'est jamais supprimée lors d'un rebuild."
     }
   },
   "dashboard": {
@@ -419,7 +652,7 @@
     "noneScheduled": "aucun en attente",
     "focusTitle": "Focus",
     "focusSubtitle": "priorisé automatiquement",
-    "focusEmpty": "Rien d’urgent — boîte sous contrôle.",
+    "focusEmpty": "Rien d’urgent. Boîte sous contrôle.",
     "viewAll": "Tout voir",
     "reasonInvoice": "Facture",
     "reasonDeadline": "Échéance",
@@ -505,12 +738,10 @@
       "uploadFile": "Ou choisir un fichier .asc",
       "invalidKey": "Bloc de clé publique PGP invalide",
       "empty": "Aucune clé de contact importée",
-      "delete": "Supprimer",
-      "deleteConfirm": "Supprimer cette clé de contact ?",
       "add": "Ajouter"
     },
     "compose": {
-      "encryptToggleOn": "Message chiffré — cliquer pour désactiver",
+      "encryptToggleOn": "Message chiffré, cliquer pour désactiver",
       "encryptToggleAvailable": "Chiffrer ce message (PGP)",
       "readReceiptDisabled": "Accusé de lecture indisponible pour un message chiffré",
       "attachmentsBlocked": "Les pièces jointes ne sont pas prises en charge pour les messages chiffrés dans cette version",
@@ -542,6 +773,40 @@
     "search": "Rechercher",
     "refresh": "Actualiser",
     "close": "Fermer",
-    "noResults": "Aucun résultat trouvé"
+    "noResults": "Aucun résultat trouvé",
+    "showPassword": "Afficher le mot de passe",
+    "hidePassword": "Masquer le mot de passe"
+  },
+  "omnibar": {
+    "sectionAccounts": "Boîtes",
+    "sectionActions": "Actions",
+    "sectionSettings": "Réglages",
+    "searchMailFor": "Rechercher « {query} » dans le courrier",
+    "themeLight": "Thème clair",
+    "themeDark": "Thème sombre",
+    "themeSystem": "Thème système",
+    "themeLightKeywords": "clair, light, jour, thème",
+    "themeDarkKeywords": "sombre, dark, nuit, thème",
+    "themeSystemKeywords": "système, system, auto, automatique, thème",
+    "languageAction": "Langue : {name}",
+    "languageKeywords": "langue, language, traduction, i18n, locale",
+    "language": "Langue",
+    "dashboardKeywords": "tableau de bord, accueil, statistiques, dashboard",
+    "composeKeywords": "nouveau message, écrire, rédiger, compose",
+    "keywords": {
+      "profile": "profil, nom, mot de passe, compte, identite",
+      "appearance": "apparence, theme, sombre, clair, systeme, langue, affichage",
+      "reading": "lecture, volet de lecture, apercu",
+      "notifications": "notifications, bureau, alertes, son",
+      "composition": "composition, redaction, annuler envoi, delai",
+      "accounts": "comptes, boite, imap, smtp, ajouter un compte, partage, couleur",
+      "signatures": "signature, pied de message",
+      "templates": "modeles, gabarits, extraits",
+      "contacts": "contacts, carnet d adresses, personnes",
+      "rules": "regles, filtres, sieve, automatisation",
+      "ai": "ia, copilote, assistant, modele",
+      "pgp": "pgp, chiffrement, gpg, cle, confidentialite",
+      "apiKeys": "api, cle, jeton, token, bearer, mcp, agent, integration"
+    }
   }
 }

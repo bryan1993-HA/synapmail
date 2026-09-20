@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { authenticate } from '@/lib/apiAuth'
 import { getAccessibleAccount } from '@/lib/accountAccess'
-import { getMessage, deleteMessage, markRead, markStarred } from '@/lib/imap'
+import { DEFAULT_FLAG_KEY, flagByKey } from '@/lib/flags'
+import { getMessage, deleteMessage, markRead, setFlagBulk } from '@/lib/imap'
+import { guardApiPayload, isMachineRequest } from '@/lib/promptGuard'
 
 export const dynamic = 'force-dynamic'
 
 type AccountRow = {
   id: string; imap_host: string; imap_port: number; imap_secure: boolean;
-  username: string; password_encrypted: string;
+  username: string; password_encrypted: string; prompt_guard: boolean;
   oauth_provider: string | null; oauth_access_token: string | null;
   oauth_refresh_token: string | null; oauth_expires_at: number | null;
 }
@@ -47,7 +49,9 @@ export async function GET(
     const message = await getMessage(accountConfig(account), folder, params.id)
     if (!message) return NextResponse.json({ error: 'Message not found' }, { status: 404 })
 
-    return NextResponse.json({ ...message, accountId })
+    return NextResponse.json(guardApiPayload({ ...message, accountId }, {
+      enabled: isMachineRequest(req) && account.prompt_guard,
+    }))
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
@@ -68,7 +72,10 @@ export async function PATCH(
 
   try {
     const body = await req.json()
-    const { isRead, isStarred } = body as { isRead?: boolean; isStarred?: boolean }
+    // `flag` carries the colour (lib/flags.ts); `isStarred` is still accepted and maps
+    // to the default colour, so existing callers keep working.
+    const { isRead, isStarred, flag } = body as
+      { isRead?: boolean; isStarred?: boolean; flag?: string | null }
 
     const account = await getAccessibleAccount(accountId, authCtx.id, ['organize'])
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 })
@@ -78,8 +85,13 @@ export async function PATCH(
     if (isRead !== undefined) {
       await markRead(config, folder, params.id, isRead)
     }
-    if (isStarred !== undefined) {
-      await markStarred(config, folder, params.id, isStarred)
+    if (flag !== undefined) {
+      if (flag !== null && !flagByKey(flag)) {
+        return NextResponse.json({ error: 'Unknown flag' }, { status: 400 })
+      }
+      await setFlagBulk(config, folder, [params.id], flag)
+    } else if (isStarred !== undefined) {
+      await setFlagBulk(config, folder, [params.id], isStarred ? DEFAULT_FLAG_KEY : null)
     }
 
     return NextResponse.json({ success: true })

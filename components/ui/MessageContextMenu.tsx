@@ -1,17 +1,31 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { Mail, MailOpen, MoveRight, Trash2, Star, StarOff, ChevronRight } from 'lucide-react'
+/**
+ * The right-click menu. It holds NO mail logic of its own: it reads the capabilities
+ * from `lib/mailSelection` and calls its actions, exactly like the app bar's toolbar.
+ * What the menu knows about the clicked row is limited to what it DISPLAYS (read /
+ * unread, color of the flag already set); the TARGET of the actions is the selection
+ * published by the list.
+ */
+
+import { Archive, Clock, Flag, Forward, Mail, MailOpen, MailX, MoveRight, Reply, ReplyAll, Trash2 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { FlagPicker } from '@/components/mail/FlagPicker'
+import {
+  ContextMenuSurface, ContextMenuItem, ContextMenuSubmenu, ContextMenuSeparator, MENU_ICON,
+} from '@/components/ui/ContextMenu'
+import { flagByKey } from '@/lib/flags'
+import { useMailSelection } from '@/lib/mailSelection'
+import { snoozePresets } from '@/lib/snooze-presets'
 import { cn } from '@/lib/utils'
 import type { Folder } from '@/types/email'
 
 export interface ContextMenuState {
   x: number
   y: number
-  uid: string
-  accountId: string
+  /** The clicked row — used for DISPLAY (read/unread toggle, checked swatch). */
   isRead: boolean
-  isStarred: boolean
+  flag: string | null
   folderPath: string
 }
 
@@ -19,97 +33,99 @@ interface Props {
   menu: ContextMenuState
   folders: Folder[]
   onClose: () => void
-  onMarkRead: (uid: string, accountId: string, read: boolean) => void
-  onStar: (uid: string, accountId: string, starred: boolean) => void
-  onMove: (uid: string, accountId: string, destination: string) => void
-  onDelete: (uid: string, accountId: string) => void
 }
 
-export function MessageContextMenu({ menu, folders, onClose, onMarkRead, onStar, onMove, onDelete }: Props) {
-  const ref = useRef<HTMLDivElement>(null)
-
-  // Clamp position to viewport
-  const x = Math.min(menu.x, window.innerWidth - 210)
-  const y = Math.min(menu.y, window.innerHeight - 300)
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    const keyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('keydown', keyHandler)
-    return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('keydown', keyHandler)
-    }
-  }, [onClose])
-
-  const item = (icon: React.ReactNode, label: string, onClick: () => void, danger = false) => (
-    <button
-      onClick={() => { onClick(); onClose() }}
-      className={cn(
-        'w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors',
-        danger
-          ? 'text-destructive hover:bg-destructive/10'
-          : 'text-foreground hover:bg-accent'
-      )}
-    >
-      {icon}
-      {label}
-    </button>
+export function MessageContextMenu({ menu, folders, onClose }: Props) {
+  const t = useTranslations('mail')
+  const { can, run } = useMailSelection()
+  const item = (
+    key: string,
+    icon: React.ReactNode,
+    label: string,
+    onClick: () => void,
+    { enabled, danger }: { enabled: boolean; danger?: boolean },
+  ) => (
+    <ContextMenuItem key={key} itemKey={key} icon={icon} label={label} onClick={onClick} onClose={onClose} enabled={enabled} danger={danger} />
   )
 
-  const nonCurrentFolders = folders.filter(f => f.path !== menu.folderPath)
+  const submenu = (key: string, icon: React.ReactNode, label: string, enabled: boolean, body: React.ReactNode) => (
+    <ContextMenuSubmenu itemKey={key} icon={icon} label={label} enabled={enabled}>{body}</ContextMenuSubmenu>
+  )
+
+  const ICON = MENU_ICON
+  const separator = <ContextMenuSeparator />
+  const otherFolders = folders.filter(f => f.path !== menu.folderPath)
 
   return (
-    <div
-      ref={ref}
-      className="fixed z-[100] min-w-[200px] bg-popover border border-border rounded-lg shadow-xl py-1 overflow-hidden"
-      style={{ left: x, top: y }}
-    >
-      {/* Read/Unread */}
+    <ContextMenuSurface anchor={menu} onClose={onClose} data-mail-context-menu>
+      {item('reply', <Reply className={ICON} />, t('reply'), () => run('reply'), { enabled: can.reply })}
+      {item('replyAll', <ReplyAll className={ICON} />, t('replyAll'), () => run('replyAll'), { enabled: can.replyAll })}
+      {item('forward', <Forward className={ICON} />, t('forward'), () => run('forward'), { enabled: can.forward })}
+
+      {separator}
+
+      {submenu(
+        'flag',
+        <Flag className={cn(ICON, menu.flag && 'fill-current')} style={flagByKey(menu.flag)?.color ? { color: flagByKey(menu.flag)!.color } : undefined} />,
+        t('flag'),
+        can.setFlag,
+        <FlagPicker current={menu.flag} onPick={flag => { run('setFlag', flag); onClose() }} />,
+      )}
       {menu.isRead
-        ? item(<MailOpen className="w-3.5 h-3.5 shrink-0" />, 'Marquer comme non lu', () => onMarkRead(menu.uid, menu.accountId, false))
-        : item(<Mail className="w-3.5 h-3.5 shrink-0" />, 'Marquer comme lu', () => onMarkRead(menu.uid, menu.accountId, true))
-      }
+        ? item('markUnread', <Mail className={ICON} />, t('markUnread'), () => run('markUnread'), { enabled: can.markUnread })
+        : item('markRead', <MailOpen className={ICON} />, t('markRead'), () => run('markRead'), { enabled: can.markRead })}
 
-      {/* Star/Unstar */}
-      {menu.isStarred
-        ? item(<StarOff className="w-3.5 h-3.5 shrink-0" />, 'Retirer le suivi', () => onStar(menu.uid, menu.accountId, false))
-        : item(<Star className="w-3.5 h-3.5 shrink-0" />, 'Suivre', () => onStar(menu.uid, menu.accountId, true))
-      }
+      {separator}
 
-      <div className="my-1 border-t border-border" />
-
-      {/* Move to — inline submenu */}
-      <div className="group relative">
-        <div className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground hover:bg-accent cursor-default transition-colors">
-          <MoveRight className="w-3.5 h-3.5 shrink-0" />
-          Déplacer vers
-          <ChevronRight className="w-3 h-3 ml-auto" />
-        </div>
-        {/* Submenu */}
-        <div className="absolute left-full top-0 hidden group-hover:block min-w-[180px] max-h-64 overflow-y-auto bg-popover border border-border rounded-lg shadow-xl py-1 z-[101]">
-          {nonCurrentFolders.length === 0 && (
-            <p className="px-3 py-2 text-xs text-muted-foreground">Aucun dossier</p>
-          )}
-          {nonCurrentFolders.map(f => (
+      {item('archive', <Archive className={ICON} />, t('archiveAction'), () => run('archive'), { enabled: can.archive })}
+      {submenu(
+        'move',
+        <MoveRight className={ICON} />,
+        t('move'),
+        can.moveTo,
+        <div className="min-w-[180px] max-h-64 overflow-y-auto">
+          {otherFolders.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{t('noFolders')}</p>}
+          {otherFolders.map(f => (
             <button
               key={f.path}
-              onClick={() => { onMove(menu.uid, menu.accountId, f.path); onClose() }}
+              type="button"
+              data-menu-folder={f.path}
+              onClick={() => { run('moveTo', f.path); onClose() }}
               className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors truncate"
             >
               {f.name}
             </button>
           ))}
-        </div>
-      </div>
+        </div>,
+      )}
+      {item('spam', <MailX className={ICON} />, t('spam'), () => run('spam'), { enabled: can.spam })}
+      {/* Snooze: removed from the rows, since it existed nowhere else. */}
+      {submenu(
+        'snooze',
+        <Clock className={ICON} />,
+        t('snooze'),
+        can.snooze,
+        <div className="min-w-[180px]">
+          {snoozePresets().map(p => (
+            <button
+              key={p.key}
+              type="button"
+              data-menu-snooze={p.key}
+              onClick={() => { run('snooze', p.date); onClose() }}
+              className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
+            >
+              <span>{t(p.key)}</span>
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                {p.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </button>
+          ))}
+        </div>,
+      )}
 
-      <div className="my-1 border-t border-border" />
+      {separator}
 
-      {/* Delete */}
-      {item(<Trash2 className="w-3.5 h-3.5 shrink-0" />, 'Supprimer', () => onDelete(menu.uid, menu.accountId), true)}
-    </div>
+      {item('remove', <Trash2 className={ICON} />, t('delete'), () => run('remove'), { enabled: can.remove, danger: true })}
+    </ContextMenuSurface>
   )
 }

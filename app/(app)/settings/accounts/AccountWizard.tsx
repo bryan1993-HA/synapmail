@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Label } from '@/components/ui/label'
 import { ArrowLeft, Wifi, Info, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -216,8 +218,9 @@ export interface AccountFormData {
 }
 
 interface TestResult {
-  imap: { ok: boolean; error: string }
-  smtp: { ok: boolean; error: string }
+  /** Absent when the route refuses before any attempt, returning a bare error instead. */
+  imap?: { ok: boolean; error: string }
+  smtp?: { ok: boolean; error: string }
 }
 
 const COLORS = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316']
@@ -229,6 +232,7 @@ interface Props {
 }
 
 export function AccountWizard({ onSave, onCancel, saving }: Props) {
+  const t = useTranslations('settings.accounts')
   const [step, setStep] = useState<'provider' | 'credentials' | 'advanced'>('provider')
   const [provider, setProvider] = useState<ProviderKey | null>(null)
   const [email, setEmail] = useState('')
@@ -290,15 +294,22 @@ export function AccountWizard({ onSave, onCancel, saving }: Props) {
 
   const TestResultBlock = () => testResult ? (
     <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
-      {(['imap', 'smtp'] as const).map(proto => (
-        <div key={proto} className={cn('flex items-center gap-3 text-sm', testResult[proto].ok ? 'text-emerald-500' : 'text-destructive')}>
-          <span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0', testResult[proto].ok ? 'bg-emerald-500' : 'bg-destructive')}>
-            {testResult[proto].ok ? '✓' : '✗'}
-          </span>
-          <span className="font-medium">{proto.toUpperCase()}</span>
-          {!testResult[proto].ok && <span className="text-xs opacity-70 truncate">{testResult[proto].error}</span>}
-        </div>
-      ))}
+      {(['imap', 'smtp'] as const).map(proto => {
+        const r = testResult[proto]
+        if (!r) return null
+        return (
+          <div key={proto} className={cn('flex items-center gap-3 text-sm', r.ok ? 'text-emerald-500' : 'text-destructive')}>
+            <span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0', r.ok ? 'bg-emerald-500' : 'bg-destructive')}>
+              {r.ok ? '✓' : '✗'}
+            </span>
+            <span className="font-medium">{proto.toUpperCase()}</span>
+            {/* The route returns a CAUSE (`lib/accountTest.ts`), no longer the raw
+                server error. It is read through the SAME key as the edit screen,
+                otherwise creation would display the bare code "unreachable". */}
+            {!r.ok && <span className="text-xs opacity-70 truncate">{t(`testFailure.${r.error}`)}</span>}
+          </div>
+        )
+      })}
     </div>
   ) : null
 
@@ -414,7 +425,7 @@ export function AccountWizard({ onSave, onCancel, saving }: Props) {
           </div>
           <div className="col-span-2 space-y-2">
             <Label>{selectedProvider.requiresAppPassword ? 'Mot de passe d\'application' : 'Mot de passe'}</Label>
-            <Input type="password" value={password} onChange={e => setPassword(e.target.value)} className="h-11" />
+            <PasswordInput value={password} onChange={e => setPassword(e.target.value)} className="h-11" />
           </div>
           <div className="col-span-2 space-y-2">
             <Label>Couleur du compte</Label>
@@ -489,7 +500,7 @@ export function AccountWizard({ onSave, onCancel, saving }: Props) {
 
           <div className="space-y-2">
             <Label>Mot de passe</Label>
-            <Input type="password" value={password} onChange={e => setPassword(e.target.value)} className="h-11" />
+            <PasswordInput value={password} onChange={e => setPassword(e.target.value)} className="h-11" />
           </div>
           <div className="space-y-2">
             <Label>Couleur du compte</Label>

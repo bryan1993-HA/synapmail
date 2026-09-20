@@ -18,6 +18,7 @@ interface UserSettings {
   mail_density: string
   list_width: number
   dashboard_account_id: string | null
+  update_dismissed_version: string | null
 }
 
 const DEFAULTS: UserSettings = {
@@ -34,9 +35,10 @@ const DEFAULTS: UserSettings = {
   mail_density: 'comfortable',
   list_width: 320,
   dashboard_account_id: null,
+  update_dismissed_version: null,
 }
 
-const SETTINGS_COLUMNS = `theme, language, messages_per_page, thread_view, reading_pane, notifications, undo_send_delay, start_view, active_account_id, sidebar_collapsed, mail_density, list_width, dashboard_account_id`
+const SETTINGS_COLUMNS = `theme, language, messages_per_page, thread_view, reading_pane, notifications, undo_send_delay, start_view, active_account_id, sidebar_collapsed, mail_density, list_width, dashboard_account_id, update_dismissed_version`
 
 export async function GET() {
   const session = await auth()
@@ -64,6 +66,7 @@ export async function PATCH(req: Request) {
       'theme', 'language', 'messages_per_page',
       'thread_view', 'reading_pane', 'notifications', 'undo_send_delay', 'start_view',
       'active_account_id', 'sidebar_collapsed', 'mail_density', 'list_width', 'dashboard_account_id',
+      'update_dismissed_version',
     ]
 
     const updates: Partial<UserSettings> = {}

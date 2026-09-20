@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-
-const PUBLIC_PATHS = ['/login', '/register', '/invite', '/api/auth', '/api/register', '/api/invites', '/api/oauth', '/_next', '/favicon']
-
-function isPublic(pathname: string): boolean {
-  return PUBLIC_PATHS.some(p => pathname.startsWith(p))
-}
+import { isPublicPath } from '@/lib/publicPaths'
 
 function getSessionCookie(req: NextRequest): string | undefined {
   return (
@@ -22,14 +17,14 @@ export function middleware(req: NextRequest) {
   // this Edge middleware can't query Postgres, it only checks the header is present.
   if (pathname.startsWith('/api/')) {
     const hasBearer = req.headers.get('authorization')?.startsWith('Bearer ') ?? false
-    if (!isPublic(pathname) && !getSessionCookie(req) && !hasBearer) {
+    if (!isPublicPath(pathname) && !getSessionCookie(req) && !hasBearer) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     return NextResponse.next()
   }
 
   // Public pages: always allow
-  if (isPublic(pathname)) {
+  if (isPublicPath(pathname)) {
     return NextResponse.next()
   }
 

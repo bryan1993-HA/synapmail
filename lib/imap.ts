@@ -4,7 +4,26 @@ import { decrypt } from './encrypt'
 import { refreshAccessToken } from './msOAuth'
 import { query } from './db'
 import { upsertContact } from './contacts'
+import { DEFAULT_FLAG_KEY, FLAG_BIT_KEYWORDS, FLAG_IMAP_FLAG, flagFromKeywords, keywordsForFlag } from './flags'
+import type { MailListFilter } from './flags'
+import { SEARCH_FIELDS, SEARCH_RESULT_LIMIT, orderFoldersForSearch } from './search'
+import type { FolderRank } from './search'
 import type { Message, Folder, AuthResults } from '@/types/email'
+
+/**
+ * Date of a message for the app: the Date header (envelope) when it is present and
+ * valid, otherwise the IMAP internal date (arrival on the server), which always
+ * exists. Some script-generated mails carry no usable Date header: without this
+ * fallback the API returned '' and the interface showed "Invalid Date".
+ */
+export function messageDate(...candidates: Array<Date | string | null | undefined>): string {
+  for (const c of candidates) {
+    if (!c) continue
+    const d = c instanceof Date ? c : new Date(c)
+    if (!Number.isNaN(d.getTime())) return d.toISOString()
+  }
+  return ''
+}
 
 function normalizeSubjectForThread(subject: string): string {
   let prev = ''
@@ -117,13 +136,17 @@ export async function listMessages(
   folder: string,
   page: number,
   perPage: number,
-  filter: 'all' | 'unread' | 'starred' = 'all',
+  filter: MailListFilter = 'all',
   userId?: string
 ): Promise<{ messages: Message[]; total: number }> {
   const client = await createClient(account)
   try {
     const mailbox = await client.mailboxOpen(folder)
-    const total = mailbox.exists
+    // Two distinct sizes, never merged: `mailboxSize` is how many messages the folder holds
+    // (what the cache reconcile and the unread count reason about), `total` is the size of the
+    // VIEW being paged — the whole mailbox for "all", the MATCHES for a filter.
+    const mailboxSize = mailbox.exists
+    let total = mailboxSize
 
     // For "all" we derive the page range directly from mailbox.exists:
     // sequence numbers are 1..N, with N being the newest message.
@@ -132,7 +155,7 @@ export async function listMessages(
     // For filtered views (unread/starred) we still need SEARCH.
     let pageSeqs: number[]
     if (filter === 'all') {
-      const end = total - (page - 1) * perPage
+      const end = mailboxSize - (page - 1) * perPage
       const start = Math.max(1, end - perPage + 1)
       pageSeqs = []
       for (let seq = end; seq >= start; seq--) pageSeqs.push(seq)
@@ -140,6 +163,9 @@ export async function listMessages(
       const criteria = filter === 'unread' ? { seen: false } : { flagged: true }
       const raw = await client.search(criteria)
       const allSeqs = Array.isArray(raw) ? raw : []
+      // A filtered view ends where its matches end. Reporting the mailbox size here made the
+      // list believe thousands of messages remained: it kept asking for empty pages forever.
+      total = allSeqs.length
       const reversed = [...allSeqs].reverse()
       pageSeqs = reversed.slice((page - 1) * perPage, page * perPage) as number[]
     }
@@ -148,7 +174,7 @@ export async function listMessages(
     const messages: Message[] = []
     if (pageUids.length > 0) {
       for await (const msg of client.fetch(pageUids as unknown as string, {
-        uid: true, flags: true, envelope: true, bodyStructure: true,
+        uid: true, flags: true, envelope: true, bodyStructure: true, internalDate: true,
         size: true,
         headers: ['list-unsubscribe', 'x-priority'],
       } as Parameters<typeof client.fetch>[1])) {
@@ -181,11 +207,12 @@ export async function listMessages(
           },
           to: (msg.envelope?.to ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' })),
           subject,
-          date: msg.envelope?.date?.toISOString() ?? '',
+          date: messageDate(msg.envelope?.date, msg.internalDate),
           preview: '',
           isRead: msg.flags?.has('\\Seen') ?? false,
-          isStarred: msg.flags?.has('\\Flagged') ?? false,
-          isFlagged: msg.flags?.has('\\Flagged') ?? false,
+          isStarred: msg.flags?.has(FLAG_IMAP_FLAG) ?? false,
+          isFlagged: msg.flags?.has(FLAG_IMAP_FLAG) ?? false,
+          flag: flagFromKeywords(msg.flags),
           hasAttachments: detectAttachments(msg.bodyStructure as unknown as Record<string, unknown>),
           threadId,
           folder,
@@ -208,8 +235,8 @@ export async function listMessages(
         const all = await client.search({ all: true }, { uid: true })
         if (Array.isArray(all)) {
           liveUids = all.map(String)
-        } else if (total === 0) {
-          liveUids = []          // genuinely empty mailbox
+        } else if (mailboxSize === 0) {
+          liveUids = []          // genuinely empty mailbox — NOT an empty filtered view
         }
         // a non-array result on a non-empty mailbox → leave null, skip pruning
       } catch {
@@ -218,7 +245,7 @@ export async function listMessages(
       // Authoritative unread count for this folder — server-side SEARCH UNSEEN,
       // not bounded by `perPage` like counting messages_cache rows would be.
       try {
-        if (total === 0) {
+        if (mailboxSize === 0) {
           unseenCount = 0
         } else {
           const unseen = await client.search({ seen: false }, { uid: true })
@@ -229,8 +256,8 @@ export async function listMessages(
       }
     }
 
-    // Upsert messages_cache — fire-and-forget, non-bloquant
-    // RETURNING xmax: 0 = nouvelle ligne (message jamais vu) → tracker le contact une seule fois
+    // Upsert messages_cache — fire-and-forget, non-blocking
+    // RETURNING xmax: 0 = new row (message never seen before) → track the contact only once
     if (account.id) {
       const accountId = account.id
       const seenUids = liveUids
@@ -257,8 +284,8 @@ export async function listMessages(
                 m.preview, m.threadId ?? null,
               ]
             )
-            // xmax = 0 → INSERT réel (message découvert pour la première fois) → 1 seule incrémentation
-            // Exclure sa propre adresse (ex: TrueNAS envoie depuis l'adresse de l'utilisateur)
+            // xmax = 0 → real INSERT (message seen for the first time) → count it only once
+            // Skip the account's own address (some devices send from the user's own address)
             if (userId && result[0]?.xmax === '0' && m.from.address
               && m.from.address.toLowerCase() !== account.username.toLowerCase()) {
               upsertContact(userId, { name: m.from.name, address: m.from.address }, 'received').catch(() => {})
@@ -310,7 +337,7 @@ export async function getMessage(
   try {
     await client.mailboxOpen(folder)
     const msg = await client.fetchOne(uid, {
-      uid: true, flags: true, envelope: true, source: true,
+      uid: true, flags: true, envelope: true, source: true, internalDate: true,
     }, { uid: true })
     if (!msg) return null
 
@@ -341,11 +368,12 @@ export async function getMessage(
         return { name: rt.name ?? '', address: rt.address }
       })(),
       subject: parsed.subject ?? msg.envelope?.subject ?? '(no subject)',
-      date: (parsed.date ?? msg.envelope?.date)?.toISOString() ?? '',
+      date: messageDate(parsed.date, msg.envelope?.date, msg.internalDate),
       preview: parsed.text?.slice(0, 200) ?? '',
       isRead: msg.flags?.has('\\Seen') ?? false,
-      isStarred: msg.flags?.has('\\Flagged') ?? false,
-      isFlagged: msg.flags?.has('\\Flagged') ?? false,
+      isStarred: msg.flags?.has(FLAG_IMAP_FLAG) ?? false,
+      isFlagged: msg.flags?.has(FLAG_IMAP_FLAG) ?? false,
+      flag: flagFromKeywords(msg.flags),
       hasAttachments: (parsed.attachments?.length ?? 0) > 0,
       bodyHtml: parsed.html || undefined,
       bodyPlain: parsed.text || undefined,
@@ -429,13 +457,30 @@ export async function markStarred(
   uid: string,
   starred: boolean
 ): Promise<void> {
+  await setFlagBulk(account, folder, [uid], starred ? DEFAULT_FLAG_KEY : null)
+}
+
+/**
+ * Sets (or clears) a color flag on a set of messages. The color is carried by the
+ * Apple keywords (see lib/flags.ts): ALL bits are removed first, otherwise a color
+ * replacing another one would keep the previous color's bits and end up rendering a
+ * third color.
+ */
+export async function setFlagBulk(
+  account: AccountConfig,
+  folder: string,
+  uids: string[],
+  flag: string | null
+): Promise<void> {
+  if (!uids.length) return
   const client = await createClient(account)
   try {
     await client.mailboxOpen(folder)
-    if (starred) {
-      await client.messageFlagsAdd(uid, ['\\Flagged'], { uid: true })
-    } else {
-      await client.messageFlagsRemove(uid, ['\\Flagged'], { uid: true })
+    const uidSet = uids.join(',')
+    const stale = flag === null ? [FLAG_IMAP_FLAG, ...FLAG_BIT_KEYWORDS] : [...FLAG_BIT_KEYWORDS]
+    await client.messageFlagsRemove(uidSet, stale, { uid: true })
+    if (flag !== null) {
+      await client.messageFlagsAdd(uidSet, [FLAG_IMAP_FLAG, ...keywordsForFlag(flag)], { uid: true })
     }
   } finally {
     await client.logout()
@@ -491,6 +536,80 @@ export async function moveMessagesBulk(
   }
 }
 
+/**
+ * RAW source of several messages from a single folder, so they can be forwarded as
+ * attachments. A SINGLE connection for the whole selection: opening then closing one
+ * IMAP session per message is expensive on the servers that were measured. The
+ * subject comes from the envelope, so the message is not re-parsed just to name the
+ * file.
+ *
+ * Two passes, in this order: SIZES first (`RFC822.SIZE`, no body bytes at all), then
+ * the sources only if the total fits under the cap. Otherwise a large mailbox would
+ * be fully loaded into memory before there is any chance to reject it.
+ *
+ * The result carries its own verdict: `missing` lists the requested uids the folder
+ * no longer holds (message moved between selection and send). The caller has nothing
+ * to compare: a truncated forward cannot go out by simple oversight.
+ */
+export interface MessageSourcesResult {
+  sources: Array<{ uid: string; subject: string; source: Buffer }>
+  /** Requested uids that were absent from the folder at re-read time. */
+  missing: string[]
+  /** Sum of the sizes advertised by the server, when the cap is exceeded. */
+  totalBytes: number
+  oversized: boolean
+}
+
+export async function getMessageSources(
+  account: AccountConfig,
+  folder: string,
+  uids: string[],
+  maxTotalBytes: number
+): Promise<MessageSourcesResult> {
+  const empty: MessageSourcesResult = { sources: [], missing: [], totalBytes: 0, oversized: false }
+  if (!uids.length) return empty
+  const client = await createClient(account)
+  try {
+    await client.mailboxOpen(folder)
+
+    // Pass 1: sizes only. `size` comes from RFC822.SIZE, which the server
+    // advertises without transferring the message.
+    const sizeByUid = new Map<string, number>()
+    for await (const msg of client.fetch(uids.join(','), { uid: true, size: true }, { uid: true })) {
+      sizeByUid.set(String(msg.uid), msg.size ?? 0)
+    }
+    const missing = uids.filter(uid => !sizeByUid.has(uid))
+    if (missing.length) return { ...empty, missing }
+
+    const totalBytes = uids.reduce((sum, uid) => sum + (sizeByUid.get(uid) ?? 0), 0)
+    if (totalBytes > maxTotalBytes) return { ...empty, totalBytes, oversized: true }
+
+    // Pass 2: the sources, now that we know they fit under the cap.
+    const byUid = new Map<string, { uid: string; subject: string; source: Buffer }>()
+    for await (const msg of client.fetch(uids.join(','), { uid: true, envelope: true, source: true }, { uid: true })) {
+      if (!msg.source) continue
+      byUid.set(String(msg.uid), {
+        uid: String(msg.uid),
+        subject: msg.envelope?.subject ?? '',
+        source: msg.source,
+      })
+    }
+    // IMAP returns messages in uid order, not in selection order: restore the
+    // requested order so the attachments follow what the user actually checked
+    // in the list.
+    return {
+      sources: uids
+        .map(uid => byUid.get(uid))
+        .filter((m): m is { uid: string; subject: string; source: Buffer } => !!m),
+      missing: uids.filter(uid => !byUid.has(uid)),
+      totalBytes,
+      oversized: false,
+    }
+  } finally {
+    await client.logout()
+  }
+}
+
 export async function getAttachmentContent(
   account: AccountConfig,
   folder: string,
@@ -533,6 +652,79 @@ export async function appendToSentFolder(account: AccountConfig, raw: Buffer): P
   }
 }
 
+/**
+ * The four verbs this module was MISSING: the application could list folders, but
+ * never create, rename, delete or empty one. All follow this file's rule:
+ * `createClient` then `logout()` in a `finally`, never a connection left open on an
+ * error.
+ *
+ * No access control here: whether an action is allowed is decided in
+ * `lib/folderActions.ts` and refused in the route. This layer only executes.
+ */
+export async function createFolder(account: AccountConfig, path: string): Promise<void> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxCreate(path)
+  } finally {
+    await client.logout()
+  }
+}
+
+export async function renameFolder(account: AccountConfig, path: string, newPath: string): Promise<void> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxRename(path, newPath)
+  } finally {
+    await client.logout()
+  }
+}
+
+export async function deleteFolder(account: AccountConfig, path: string): Promise<void> {
+  const client = await createClient(account)
+  try {
+    await client.mailboxDelete(path)
+  } finally {
+    await client.logout()
+  }
+}
+
+/** Marks the WHOLE folder as read. `1:*` in sequence numbers: this is the one case in the
+ *  module where UIDs add nothing, since the range targets the whole mailbox, not a selection. */
+export async function markFolderRead(account: AccountConfig, path: string): Promise<void> {
+  const client = await createClient(account)
+  try {
+    const mailbox = await client.mailboxOpen(path)
+    if (mailbox.exists > 0) await client.messageFlagsAdd('1:*', ['\\Seen'])
+  } finally {
+    await client.logout()
+  }
+}
+
+/** Empties the folder (\Deleted + EXPUNGE). Whether emptying is ALLOWED is decided higher up. */
+export async function emptyFolder(account: AccountConfig, path: string): Promise<number> {
+  const client = await createClient(account)
+  try {
+    const mailbox = await client.mailboxOpen(path)
+    if (mailbox.exists === 0) return 0
+    await client.messageDelete('1:*')
+    return mailbox.exists
+  } finally {
+    await client.logout()
+  }
+}
+
+/** Message count of a folder, without downloading anything: the delete confirmation
+ *  shows this number to the user before they confirm. */
+export async function folderMessageCount(account: AccountConfig, path: string): Promise<number> {
+  const client = await createClient(account)
+  try {
+    const mailbox = await client.mailboxOpen(path, { readOnly: true })
+    return mailbox.exists
+  } finally {
+    await client.logout()
+  }
+}
+
 export async function listFolders(account: AccountConfig): Promise<Folder[]> {
   const client = await createClient(account)
   try {
@@ -552,25 +744,241 @@ export async function listFolders(account: AccountConfig): Promise<Folder[]> {
   }
 }
 
+/**
+ * Number of IMAP connections opened in parallel by a multi-folder search. A connection
+ * can only have one folder open at a time (mailbox lock), so covering a whole account
+ * is shared across a few connections. Calibrated on a test account (100 folders, one
+ * single-word query): one connection per folder > 300 s; one shared connection 152 s;
+ * four connections 44 s. Beyond that, consumer IMAP servers start refusing
+ * simultaneous connections.
+ */
+export const SEARCH_CONNECTIONS = 4
+
+/** What a search reports: the messages RETURNED and the total number of matches. */
+export type SearchOutcome = { messages: Message[]; total: number }
+
+/**
+ * The folders of an account, IN THE ORDER an "all folders" search should open them,
+ * and without the empty folders.
+ *
+ * Two sources, a single round trip each:
+ *  - `LIST` with `statusQuery` (LIST-STATUS extension, when the server advertises it)
+ *    gives the message count of EVERY folder in one command: measured on the largest
+ *    test account (101 folders) at 222 ms, against 6592 ms for 101 `STATUS` commands
+ *    sent one after another. A server without LIST-STATUS simply returns folders with
+ *    no count: they stay in the list (only a MEASURED zero drops a folder), and the
+ *    search is then merely less well ordered.
+ *  - the local cache (`messages_cache`) gives the date of the most recent known
+ *    message per folder, which floats the live folders to the top.
+ */
+export async function listFoldersRanked(account: AccountConfig): Promise<string[]> {
+  const client = await createClient(account)
+  let entries: FolderRank[]
+  try {
+    const list = await client.list({ statusQuery: { messages: true } })
+    entries = list
+      .filter(f => !f.flags?.has('\\Noselect'))
+      .map(f => ({
+        path: f.path,
+        specialUse: (f as unknown as Record<string, unknown>).specialUse as string | undefined ?? null,
+        messages: f.status?.messages ?? null,
+      }))
+  } finally {
+    await client.logout()
+  }
+
+  const freshness = new Map<string, string>()
+  try {
+    const rows = await query<{ folder: string; last_date: string | null }>(
+      `SELECT folder, MAX(date) AS last_date FROM messages_cache WHERE account_id = $1 GROUP BY folder`,
+      [account.id]
+    )
+    for (const r of rows) if (r.last_date) freshness.set(r.folder, new Date(r.last_date).toISOString())
+  } catch {
+    // The cache is only a RANKING: its absence degrades the order, never the result.
+  }
+
+  return orderFoldersForSearch(entries.map(e => ({ ...e, lastKnownDate: freshness.get(e.path) ?? null })))
+}
+
+/** What one folder has just reported, as soon as it reported it. */
+export type SearchChunk = SearchOutcome & { folder: string; searched: number; folders: number }
+
+/**
+ * Searches folder by folder and STREAMS RESULTS AS THEY COME: an "all folders"
+ * search becomes useful as soon as the first folder is returned, instead of waiting
+ * for full coverage (measured: ~30 s for 101 folders, at ~300 ms each).
+ *
+ * `signal` cancels cleanly: the remaining folders are not opened and the connections
+ * are closed by each worker's `finally`.
+ */
+export async function* searchMessagesByFolder(
+  account: AccountConfig,
+  folders: string[],
+  terms: string[],
+  signal?: AbortSignal
+): AsyncGenerator<SearchChunk> {
+  if (terms.length === 0 || folders.length === 0) return
+  const queue = [...folders]
+  // A minimal channel: the workers push, the generator pops. No library for three
+  // lines, and the delivery order is the order of the RESPONSES, which is precisely
+  // what we want to display.
+  const ready: SearchChunk[] = []
+  let wake: (() => void) | null = null
+  const deliver = (chunk: SearchChunk) => { ready.push(chunk); wake?.(); wake = null }
+  let searched = 0
+
+  const worker = async () => {
+    const client = await createClient(account)
+    // Cancelling BETWEEN two folders is not enough: a `SEARCH` on a large folder
+    // takes tens of seconds (measured 23 s on a folder holding 163783 messages),
+    // during which the connection would stay open after the client has left. Closing
+    // the connection aborts the in-flight command, which `logout()` does not, since
+    // it politely waits for the server's response.
+    const cut = () => { client.close() }
+    signal?.addEventListener('abort', cut, { once: true })
+    try {
+      for (let folder = queue.shift(); folder !== undefined; folder = queue.shift()) {
+        if (signal?.aborted) return
+        try {
+          const outcome = await searchOpenFolder(client, folder, terms)
+          searched += 1
+          deliver({ ...outcome, folder, searched, folders: folders.length })
+        } catch {
+          // An unreadable folder does not fail the whole search; it still counts as
+          // covered, otherwise progress never reaches completion. A connection cut by
+          // cancellation lands here too: the loop stops on the next iteration, at the
+          // `signal` check.
+          searched += 1
+          deliver({ messages: [], total: 0, folder, searched, folders: folders.length })
+        }
+      }
+    } finally {
+      signal?.removeEventListener('abort', cut)
+      await client.logout().catch(() => {})
+    }
+  }
+
+  const running = Array.from({ length: Math.min(SEARCH_CONNECTIONS, folders.length) }, worker)
+  const all = Promise.allSettled(running)
+  let done = false
+  all.then(() => { done = true; wake?.(); wake = null })
+
+  while (!done || ready.length > 0) {
+    if (ready.length === 0) { await new Promise<void>(resolve => { wake = resolve }); continue }
+    yield ready.shift() as SearchChunk
+  }
+  // Propagate a failure that hit ALL workers (credentials refused, server
+  // unreachable): without this the search would end reporting "0 results".
+  const outcomes = await all
+  if (outcomes.length > 0 && outcomes.every(o => o.status === 'rejected')) {
+    throw (outcomes[0] as PromiseRejectedResult).reason
+  }
+}
+
+/**
+ * Searches SEVERAL folders while reusing the connections: opening one connection per
+ * folder costs a TLS handshake plus a LOGIN every time, which makes an "all folders"
+ * search unusable on a real account. An unreadable folder is ignored while others
+ * remain to be covered.
+ *
+ * `terms` comes from `parseQuery` (lib/search.ts): ALL of them must match.
+ */
+export async function searchMessagesIn(
+  account: AccountConfig,
+  folders: string[],
+  terms: string[]
+): Promise<SearchOutcome> {
+  if (terms.length === 0) return { messages: [], total: 0 }
+  const queue = [...folders]
+  const worker = async (): Promise<SearchOutcome> => {
+    const client = await createClient(account)
+    try {
+      const found: Message[] = []
+      let total = 0
+      for (let folder = queue.shift(); folder !== undefined; folder = queue.shift()) {
+        try {
+          const outcome = await searchOpenFolder(client, folder, terms)
+          found.push(...outcome.messages)
+          total += outcome.total
+        } catch (err) {
+          if (folders.length === 1) throw err
+        }
+      }
+      return { messages: found, total }
+    } finally {
+      await client.logout()
+    }
+  }
+  const workers = Array.from({ length: Math.min(SEARCH_CONNECTIONS, folders.length) }, worker)
+  const outcomes = await Promise.all(workers)
+  return {
+    messages: outcomes.flatMap(o => o.messages),
+    total: outcomes.reduce((sum, o) => sum + o.total, 0),
+  }
+}
+
+/**
+ * Searches for ONE exact phrase in a folder. Used by thread grouping, which starts
+ * from a normalized subject: splitting it into words would widen the thread to
+ * unrelated messages.
+ */
 export async function searchMessages(
   account: AccountConfig,
   folder: string,
   queryStr: string
 ): Promise<Message[]> {
-  const client = await createClient(account)
+  return (await searchMessagesIn(account, [folder], [queryStr])).messages
+}
+
+/**
+ * One term = one `SEARCH` querying every field of the contract with `OR`; the terms
+ * are then crossed as an INTERSECTION of identifiers, which gives the expected AND
+ * ("a b" and "b a" report the same set).
+ *
+ * Why not ONE single query? IMAP does chain its criteria with AND, but an imapflow
+ * query object carries only one `or` key: two `OR` groups in the same query would
+ * require a nested `NOT NOT`. One `SEARCH` per term only carries identifiers, on an
+ * ALREADY open mailbox (measured 1.2 s per query on a consumer server).
+ * ponytail: client-side intersection as long as the terms can be counted on one hand;
+ * beyond that, the single query is what should be built, not more round trips.
+ */
+async function searchOpenFolder(
+  client: ImapFlow,
+  folder: string,
+  terms: string[]
+): Promise<SearchOutcome> {
+  const lock = await client.getMailboxLock(folder)
   try {
-    await client.mailboxOpen(folder)
-    const searchResult = await client.search({
-      or: [{ from: queryStr }, { subject: queryStr }],
-    })
-    const allUids = Array.isArray(searchResult) ? searchResult : []
-    const recentUids = [...allUids].reverse().slice(0, 50)
+    let matching: number[] | null = null
+    for (const term of terms) {
+      // `{ uid: true }` is mandatory: without it the server returns SEQUENCE NUMBERS,
+      // which the `fetch` below would read back as UIDs, hence the wrong messages as
+      // soon as any message has been deleted from the folder.
+      const result = await client.search(
+        { or: SEARCH_FIELDS.map(field => ({ [field]: term })) },
+        { uid: true }
+      )
+      const uids = Array.isArray(result) ? result : []
+      if (matching === null) matching = uids
+      else {
+        const keep = new Set(uids)
+        matching = matching.filter(uid => keep.has(uid))
+      }
+      if (matching.length === 0) break
+    }
+    const allUids = matching ?? []
+    const recentUids = [...allUids].reverse().slice(0, SEARCH_RESULT_LIMIT)
 
     const messages: Message[] = []
     if (recentUids.length > 0) {
-      for await (const msg of client.fetch(recentUids as unknown as string, {
-        uid: true, flags: true, envelope: true, bodyStructure: true,
-      })) {
+      // The third argument is what turns this FETCH into a `UID FETCH`; `uid: true` in
+      // the second one only ASKS for the UID field. Both are required: without the
+      // third, the identifiers returned by the search would be read back as sequence
+      // numbers (measured: 0 messages returned out of 212 found).
+      for await (const msg of client.fetch(recentUids.join(','), {
+        uid: true, flags: true, envelope: true, bodyStructure: true, internalDate: true,
+      }, { uid: true })) {
         messages.push({
           uid: String(msg.uid),
           messageId: msg.envelope?.messageId ?? '',
@@ -580,19 +988,20 @@ export async function searchMessages(
           },
           to: (msg.envelope?.to ?? []).map(a => ({ name: a.name ?? '', address: a.address ?? '' })),
           subject: msg.envelope?.subject ?? '(no subject)',
-          date: msg.envelope?.date?.toISOString() ?? '',
+          date: messageDate(msg.envelope?.date, msg.internalDate),
           preview: '',
           isRead: msg.flags?.has('\\Seen') ?? false,
-          isStarred: msg.flags?.has('\\Flagged') ?? false,
-          isFlagged: msg.flags?.has('\\Flagged') ?? false,
+          isStarred: msg.flags?.has(FLAG_IMAP_FLAG) ?? false,
+          isFlagged: msg.flags?.has(FLAG_IMAP_FLAG) ?? false,
+          flag: flagFromKeywords(msg.flags),
           hasAttachments: detectAttachments(msg.bodyStructure as unknown as Record<string, unknown>),
           folder,
           accountId: '',
         })
       }
     }
-    return messages
+    return { messages, total: allUids.length }
   } finally {
-    await client.logout()
+    lock.release()
   }
 }

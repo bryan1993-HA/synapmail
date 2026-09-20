@@ -17,12 +17,14 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { FORWARD_ERROR, type ForwardedMessages } from '@/lib/forward'
 import useSWR from 'swr'
 import type { Signature, EmailAccount } from '@/types/account'
 import type { Attachment } from '@/types/email'
 import type { ComposeTemplate } from '@/types/template'
 import type { PgpContactKey, PgpIdentity } from '@/types/pgp'
 import { encryptText } from '@/lib/pgp'
+import { useTranslations } from 'next-intl'
 import { EmailTokenInput } from './EmailTokenInput'
 import { AICompose } from '@/components/ai/AICompose'
 
@@ -52,6 +54,15 @@ interface ComposeModalProps {
     accountId: string
     attachments?: ForwardedAtt[]
   }
+  /**
+   * Forwarding SEVERAL whole messages: each one leaves as an `.eml` attachment.
+   * `accountId` is the ORIGIN account of the selection, NOT the sender — the user can
+   * change the From field after ticking rows, so the server must re-read the sources
+   * where they were ticked, and it checks that access separately (see `lib/forward.ts`).
+   * For a single message the caller leaves this field empty and passes `replyTo`:
+   * the original behaviour is unchanged.
+   */
+  forwardedMessages?: ForwardedMessages
   accountEmail: string
   accountId: string
   initialBody?: string
@@ -101,7 +112,9 @@ const FIELD_ROW =
   'border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.03] ' +
   'focus-within:border-violet-500 focus-within:bg-violet-500/[0.06] focus-within:ring-2 focus-within:ring-violet-500/40'
 
-export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBody, onClose, onSent, canSend = true }: ComposeModalProps) {
+export function ComposeModal({ mode, replyTo, forwardedMessages, accountEmail, accountId, initialBody, onClose, onSent, canSend = true }: ComposeModalProps) {
+  const t = useTranslations('mail')
+  const forwardedCount = mode === 'forward' ? forwardedMessages?.uids.length ?? 0 : 0
   const [toTokens, setToTokens] = useState<string[]>(() => {
     if ((mode === 'reply' || mode === 'replyAll') && replyTo) return [replyTo.from.address]
     return []
@@ -121,6 +134,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
   const [subject, setSubject] = useState(() => {
     if ((mode === 'reply' || mode === 'replyAll') && replyTo) return `Re: ${replyTo.subject.replace(/^(Re|Fwd):\s*/i, '')}`
     if (mode === 'forward' && replyTo) return `Fwd: ${replyTo.subject.replace(/^(Re|Fwd):\s*/i, '')}`
+    if (forwardedCount) return t('forwardedSubject', { count: forwardedCount })
     return ''
   })
   const [sending, setSending] = useState(false)
@@ -184,7 +198,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
     if (!allRecipientsHaveKeys && encrypted) setEncrypted(false)
   }, [allRecipientsHaveKeys, encrypted])
 
-  // Compte d'envoi — modifiable par message quand l'utilisateur a plusieurs comptes
+  // Sending account — changeable per message when the user has several accounts
   const [fromAccountId, setFromAccountId] = useState(accountId)
   const fromAccount = accounts.find(a => a.id === fromAccountId)
   const fromEmail = fromAccount?.email ?? accountEmail
@@ -400,6 +414,21 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
     setForwardedAtts(prev => prev.filter(a => a.id !== id))
   }
 
+  // Forward rejection: the server returns a CODE and this window picks the translated
+  // sentence. Both sides read the same table (`lib/forward.ts`), so no label can drift
+  // away from a code.
+  const forwardErrorMessage = (code: unknown, limit: unknown): string | null => {
+    const count = typeof limit === 'number' ? limit : 0
+    switch (code) {
+      case FORWARD_ERROR.invalid: return t('forwardInvalid')
+      case FORWARD_ERROR.tooMany: return t('forwardTooMany', { count })
+      case FORWARD_ERROR.tooLarge: return t('forwardTooLarge', { count: Math.round(count / (1024 * 1024)) })
+      case FORWARD_ERROR.missing: return t('forwardMissing', { count })
+      case FORWARD_ERROR.originDenied: return t('forwardOriginDenied')
+      default: return null
+    }
+  }
+
   const doActualSend = async (payload: Record<string, unknown>, isScheduled: boolean) => {
     setSending(true)
     setError(null)
@@ -422,7 +451,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
         })
         if (!res.ok) {
           const data = await res.json()
-          throw new Error(data.error ?? "Erreur lors de l'envoi")
+          throw new Error(forwardErrorMessage(data.error, data.limit) ?? data.error ?? "Erreur lors de l'envoi")
         }
       }
       clearDraft()
@@ -430,7 +459,8 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
       onClose()
     } catch (err) {
       setUndoCountdown(0)
-      setError(String(err))
+      // The message, not the "Error:" wrapper around it: the user reads a sentence.
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSending(false)
     }
@@ -450,7 +480,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
       setError('Destinataire et sujet requis')
       return
     }
-    if (encrypted && mode === 'forward' && forwardedAtts.length) {
+    if (encrypted && mode === 'forward' && (forwardedAtts.length || forwardedCount)) {
       setError('Les pièces jointes ne sont pas prises en charge pour les messages chiffrés dans cette version')
       return
     }
@@ -488,6 +518,10 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
         requestReadReceipt,
       }
 
+      if (forwardedCount && forwardedMessages) {
+        payload.forwardedMessages = forwardedMessages
+      }
+
       if (mode === 'forward' && forwardedAtts.length) {
         payload.forwardedAttachments = forwardedAtts.map(a => ({
           uid: a.uid,
@@ -506,7 +540,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
       return
     }
 
-    // Undo Send — envoi immédiat seulement
+    // Undo Send — immediate send only
     if (undoSendDelay > 0) {
       undoDelayRef.current = undoSendDelay
       setUndoCountdown(undoSendDelay)
@@ -565,7 +599,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
     forward: 'Transférer',
   }
 
-  // ── Undo Send toast (modal invisible, app utilisable) ────────────────
+  // ── Undo Send toast (modal hidden, app still usable) ────────────────
   if (undoCountdown > 0) {
     const progress = (undoCountdown / undoDelayRef.current) * 100
     return (
@@ -664,6 +698,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                   onClick={() => setShowFromDropdown(v => !v)}
                   aria-haspopup="listbox"
                   aria-expanded={showFromDropdown}
+                  data-compose-from
                   className="w-full flex items-center gap-2 bg-transparent text-sm text-foreground py-1 outline-none"
                 >
                   <span className="truncate">
@@ -672,7 +707,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
                   <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 ml-auto text-muted-foreground transition-transform', showFromDropdown && 'rotate-180')} />
                 </button>
                 {showFromDropdown && (
-                  <div role="listbox" className="absolute top-full mt-2 left-0 right-0 z-20 bg-popover border border-border rounded-xl shadow-lg py-1 overflow-hidden">
+                  <div role="listbox" data-compose-from-list className="absolute top-full mt-2 left-0 right-0 z-20 bg-popover border border-border rounded-xl shadow-lg py-1 overflow-hidden">
                     {accounts.map(a => {
                       const active = a.id === fromAccountId
                       return (
@@ -767,6 +802,16 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
               className="h-7 text-sm border-0 rounded-none px-0 bg-transparent focus-visible:ring-0 shadow-none flex-1 font-semibold"
             />
           </div>
+
+          {/* Whole messages forwarded as attachments */}
+          {forwardedCount > 0 && (
+            <div className={cn('flex items-center gap-1.5 py-2.5', FIELD_ROW)} data-forwarded-count={forwardedCount}>
+              <span className="flex items-center gap-1.5 bg-muted/50 rounded-md px-2 py-1 text-xs text-muted-foreground">
+                <Paperclip className="w-3 h-3 shrink-0" />
+                <span className="text-foreground">{t('forwardedAttached', { count: forwardedCount })}</span>
+              </span>
+            </div>
+          )}
 
           {/* Forwarded attachments */}
           {mode === 'forward' && forwardedAtts.length > 0 && (
@@ -1088,6 +1133,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
           {editor && (
             <AICompose
+              accountId={fromAccountId}
               getContent={() => editor.getHTML()}
               onResult={(text) => {
                 const sig = selectedSigId ? signatures.find(s => s.id === selectedSigId) : null
@@ -1120,7 +1166,7 @@ export function ComposeModal({ mode, replyTo, accountEmail, accountId, initialBo
 
               {showSigDropdown && (
                 <div className="absolute bottom-full mb-1 right-0 min-w-[160px] bg-popover border border-border rounded-xl shadow-lg py-1 z-10 overflow-hidden">
-                  {/* Sans signature */}
+                  {/* No signature */}
                   <button
                     type="button"
                     onClick={() => { handleSigChange(''); setShowSigDropdown(false) }}

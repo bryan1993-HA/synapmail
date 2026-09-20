@@ -1,5 +1,11 @@
 import type { Config } from "tailwindcss";
 
+// Theme tokens are raw `var(--x)` values, which Tailwind cannot give an alpha
+// channel to on its own: it silently drops every `bg-foreground/25`-style class
+// instead of emitting a rule. Wrapping each token here restores them.
+const token = (name: string) =>
+  `color-mix(in oklab, var(--${name}) calc(<alpha-value> * 100%), transparent)`;
+
 const config: Config = {
   darkMode: "class",
   content: [
@@ -10,47 +16,47 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        background: token("background"),
+        foreground: token("foreground"),
         card: {
-          DEFAULT: "var(--card)",
-          foreground: "var(--card-foreground)",
+          DEFAULT: token("card"),
+          foreground: token("card-foreground"),
         },
         popover: {
-          DEFAULT: "var(--popover)",
-          foreground: "var(--popover-foreground)",
+          DEFAULT: token("popover"),
+          foreground: token("popover-foreground"),
         },
         primary: {
-          DEFAULT: "var(--primary)",
-          foreground: "var(--primary-foreground)",
+          DEFAULT: token("primary"),
+          foreground: token("primary-foreground"),
         },
         secondary: {
-          DEFAULT: "var(--secondary)",
-          foreground: "var(--secondary-foreground)",
+          DEFAULT: token("secondary"),
+          foreground: token("secondary-foreground"),
         },
         muted: {
-          DEFAULT: "var(--muted)",
-          foreground: "var(--muted-foreground)",
+          DEFAULT: token("muted"),
+          foreground: token("muted-foreground"),
         },
         accent: {
-          DEFAULT: "var(--accent)",
-          foreground: "var(--accent-foreground)",
+          DEFAULT: token("accent"),
+          foreground: token("accent-foreground"),
         },
         destructive: {
-          DEFAULT: "var(--destructive)",
+          DEFAULT: token("destructive"),
         },
-        border: "var(--border)",
-        input: "var(--input)",
-        ring: "var(--ring)",
+        border: token("border"),
+        input: token("input"),
+        ring: token("ring"),
         sidebar: {
-          DEFAULT: "var(--sidebar)",
-          foreground: "var(--sidebar-foreground)",
-          primary: "var(--sidebar-primary)",
-          "primary-foreground": "var(--sidebar-primary-foreground)",
-          accent: "var(--sidebar-accent)",
-          "accent-foreground": "var(--sidebar-accent-foreground)",
-          border: "var(--sidebar-border)",
-          ring: "var(--sidebar-ring)",
+          DEFAULT: token("sidebar"),
+          foreground: token("sidebar-foreground"),
+          primary: token("sidebar-primary"),
+          "primary-foreground": token("sidebar-primary-foreground"),
+          accent: token("sidebar-accent"),
+          "accent-foreground": token("sidebar-accent-foreground"),
+          border: token("sidebar-border"),
+          ring: token("sidebar-ring"),
         },
       },
       borderRadius: {

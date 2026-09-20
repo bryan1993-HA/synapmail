@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { authenticate } from '@/lib/apiAuth'
 import { getAccessibleAccount } from '@/lib/accountAccess'
-import { markReadBulk, deleteMessagesBulk, moveMessagesBulk } from '@/lib/imap'
+import { markReadBulk, deleteMessagesBulk, moveMessagesBulk, setFlagBulk } from '@/lib/imap'
+import { flagByKey } from '@/lib/flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,12 +34,14 @@ export async function PATCH(req: Request) {
   if (!authCtx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { uids, action, accountId, folder, destination } = body as {
+  const { uids, action, accountId, folder, destination, flag } = body as {
     uids: string[]
-    action: 'read' | 'unread' | 'move'
+    action: 'read' | 'unread' | 'move' | 'flag'
     accountId: string
     folder: string
     destination?: string
+    /** A colour from lib/flags.ts, or `null` to clear the flag. */
+    flag?: string | null
   }
 
   if (!uids?.length || !accountId || !folder || !action) {
@@ -55,6 +58,10 @@ export async function PATCH(req: Request) {
       await markReadBulk(config, folder, uids, true)
     } else if (action === 'unread') {
       await markReadBulk(config, folder, uids, false)
+    } else if (action === 'flag') {
+      if (flag === undefined) return NextResponse.json({ error: 'flag required for flag' }, { status: 400 })
+      if (flag !== null && !flagByKey(flag)) return NextResponse.json({ error: 'Unknown flag' }, { status: 400 })
+      await setFlagBulk(config, folder, uids, flag)
     } else if (action === 'move') {
       if (!destination) return NextResponse.json({ error: 'destination required for move' }, { status: 400 })
       await moveMessagesBulk(config, folder, uids, destination)

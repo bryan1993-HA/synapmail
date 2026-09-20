@@ -13,12 +13,18 @@ export interface EmailAccount {
   isDefault: boolean
   color: string
   oauthProvider?: 'google' | 'microsoft' | null
+  /** Prompt-injection guard for this mailbox (default on) — see lib/promptGuard.ts. */
+  promptGuard: boolean
+  /** Badge colour chosen by the owner, `null` = automatic colour by rank — see lib/accountColor.ts. */
+  badgeColor?: string | null
   createdAt: string
   /** Unread count in the account's top-level INBOX — authoritative IMAP SEARCH UNSEEN
    *  (mailbox_stats), falling back to cached-row count. GET /api/accounts only. */
   unreadCount?: number
   /** True when this account was shared with the current user rather than owned by them. GET /api/accounts only. */
   isShared?: boolean
+  /** Id of the `account_shares` row granting this access — only set when `isShared`. */
+  shareId?: string | null
   ownerName?: string | null
   expiresAt?: string | null
   permissions?: {

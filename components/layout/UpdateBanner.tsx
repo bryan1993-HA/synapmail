@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import useSWR from 'swr'
+import { useState } from 'react'
+import useSWR, { mutate as globalMutate } from 'swr'
 import { useTranslations } from 'next-intl'
 import { X, Sparkles, Terminal, AlertCircle } from 'lucide-react'
 import {
@@ -14,7 +14,12 @@ import type { GitHubRelease } from '@/app/api/updates/route'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-// ── Utilitaire : comparaison semver simple ───────────────────────────────────
+/** Shared SWR key for user preferences (a single source, cf. UI state persistence). */
+const SETTINGS_KEY = '/api/settings'
+/** Version assumed while the API has not answered yet: older than any release. */
+const FALLBACK_VERSION = '0.0.0'
+
+// ── Helper: simple semver comparison ────────────────────────────────────────
 function isNewer(latest: string, current: string): boolean {
   const parse = (v: string) =>
     v
@@ -29,7 +34,7 @@ function isNewer(latest: string, current: string): boolean {
   return lPat > cPat
 }
 
-// ── Rendu Markdown minimal (headers, bold, listes, liens) ────────────────────
+// ── Minimal Markdown rendering (headers, bold, lists, links) ─────────────────
 function renderMarkdown(md: string): string {
   return md
     // Headers
@@ -41,15 +46,15 @@ function renderMarkdown(md: string): string {
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     // Code inline
     .replace(/`([^`]+)`/g, '<code class="bg-muted px-1 py-0.5 rounded text-xs font-mono">$1</code>')
-    // Listes
+    // Lists
     .replace(/^[-*] (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
-    // Liens
+    // Links
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="text-blue-500 underline">$1</a>')
-    // Séparateur
+    // Separator
     .replace(/^---$/gm, '<hr class="my-3 border-border" />')
-    // Sauts de ligne (après les remplacements)
+    // Line breaks (after the replacements above)
     .replace(/\n/g, '<br />')
-    // Nettoyer les <br /> superflus autour des balises block
+    // Drop the redundant <br /> around block tags
     .replace(/<br \/>(<h[1-3])/g, '$1')
     .replace(/(<\/h[1-3]>)<br \/>/g, '$1')
     .replace(/<br \/>(<li)/g, '$1')
@@ -58,10 +63,9 @@ function renderMarkdown(md: string): string {
     .replace(/(<\/hr>)<br \/>/g, '$1')
 }
 
-// ── Composant principal ──────────────────────────────────────────────────────
+// ── Main component ──────────────────────────────────────────────────────────
 export function UpdateBanner() {
   const t = useTranslations('updates')
-  const [dismissed, setDismissed] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'releases' | 'howto'>('releases')
 
@@ -74,40 +78,58 @@ export function UpdateBanner() {
     dedupingInterval: 3600_000,
   })
 
-  // Restaurer le dismiss depuis sessionStorage (reset à chaque session)
-  useEffect(() => {
-    const key = 'synapmail:update-dismissed'
-    const stored = sessionStorage.getItem(key)
-    if (stored) setDismissed(true)
-  }, [])
-
-  const handleDismiss = () => {
-    setDismissed(true)
-    sessionStorage.setItem('synapmail:update-dismissed', '1')
-  }
+  // The dismissal lives server-side (user_settings.update_dismissed_version): it
+  // survives a reload and follows the user across devices, and a version newer than the
+  // dismissed one brings the banner back.
+  const { data: settings } = useSWR<{ data?: { update_dismissed_version?: string | null } }>(
+    SETTINGS_KEY,
+    fetcher
+  )
 
   const releases = data?.data?.releases ?? []
-  const current = data?.data?.current ?? '0.0.0'
+  const current = data?.data?.current ?? FALLBACK_VERSION
 
-  // Trouver toutes les releases plus récentes que la version courante
+  // Find every release newer than the current version
   const newReleases = releases.filter(
     (r) => !r.prerelease && isNewer(r.tag_name, current)
   )
 
-  if (!data || newReleases.length === 0 || dismissed) return null
-
   const latest = newReleases[0]
+  const dismissedVersion = settings?.data?.update_dismissed_version ?? null
+  const dismissed = latest !== undefined && dismissedVersion !== null && !isNewer(latest.tag_name, dismissedVersion)
+
+  const handleDismiss = () => {
+    if (!latest) return
+    const version = latest.tag_name
+    globalMutate(
+      SETTINGS_KEY,
+      (curr: { data?: Record<string, unknown> } | undefined) =>
+        curr?.data ? { ...curr, data: { ...curr.data, update_dismissed_version: version } } : curr,
+      false
+    )
+    fetch(SETTINGS_KEY, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ update_dismissed_version: version }),
+    })
+      .catch(() => undefined)
+      .then(() => globalMutate(SETTINGS_KEY))
+  }
+
+  // Render nothing until the server preference has loaded: otherwise the banner would
+  // appear and then vanish for anyone who already dismissed it.
+  if (!data || !settings || !latest || dismissed) return null
 
   return (
     <>
-      {/* ── Bandeau pleine largeur ─────────────────────────────────────────── */}
+      {/* ── Full-width banner ──────────────────────────────────────────────── */}
       <div
         role="alert"
         className="relative flex items-center justify-between gap-3 w-full
                    bg-gradient-to-r from-violet-600 to-indigo-600
                    text-white px-4 py-2.5 text-sm shrink-0 z-40"
       >
-        {/* Icône + texte */}
+        {/* Icon + text */}
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="w-4 h-4 shrink-0 opacity-90" />
           <span className="font-medium truncate">
@@ -134,7 +156,7 @@ export function UpdateBanner() {
         </div>
       </div>
 
-      {/* ── Modale ─────────────────────────────────────────────────────────── */}
+      {/* ── Modal ─────────────────────────────────────────────────────────── */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="!max-w-[960px] w-[92vw] max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
@@ -144,7 +166,7 @@ export function UpdateBanner() {
             </DialogTitle>
           </DialogHeader>
 
-          {/* Onglets */}
+          {/* Tabs */}
           <div className="flex border-b border-border mt-4 shrink-0 px-6">
             <button
               onClick={() => setActiveTab('releases')}
@@ -168,13 +190,13 @@ export function UpdateBanner() {
             </button>
           </div>
 
-          {/* Contenu */}
+          {/* Content */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {activeTab === 'releases' ? (
               <div className="space-y-6">
                 {newReleases.map((release) => (
                   <div key={release.tag_name}>
-                    {/* En-tête release */}
+                    {/* Release header */}
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <span className="inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-900/40 px-2.5 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-300">
@@ -198,7 +220,7 @@ export function UpdateBanner() {
                       </a>
                     </div>
 
-                    {/* Contenu release */}
+                    {/* Release body */}
                     {release.body ? (
                       <div
                         className="prose prose-sm dark:prose-invert max-w-none text-sm text-muted-foreground leading-relaxed"
@@ -208,7 +230,7 @@ export function UpdateBanner() {
                       <p className="text-sm text-muted-foreground italic">{t('noNotes')}</p>
                     )}
 
-                    {/* Séparateur si plusieurs releases */}
+                    {/* Separator when there are several releases */}
                     {newReleases.indexOf(release) < newReleases.length - 1 && (
                       <hr className="mt-6 border-border" />
                     )}
@@ -225,7 +247,7 @@ export function UpdateBanner() {
   )
 }
 
-// ── Onglet "Comment mettre à jour" ───────────────────────────────────────────
+// ── "How to update" tab ─────────────────────────────────────────────────────
 function HowToUpdate({
   current,
   latest,
@@ -264,7 +286,7 @@ function HowToUpdate({
 
   return (
     <div className="space-y-5">
-      {/* Bandeau info sécurité */}
+      {/* Safety notice */}
       <div className="flex gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
         <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
@@ -279,11 +301,11 @@ function HowToUpdate({
         <span>{t('howto.to')} <span className="font-mono font-medium">{latest}</span></span>
       </div>
 
-      {/* Étapes */}
+      {/* Steps */}
       <div className="space-y-4">
         {steps.map((step, i) => (
           <div key={i} className="flex gap-3">
-            {/* Numéro */}
+            {/* Number */}
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/40 text-xs font-bold text-violet-700 dark:text-violet-300 mt-0.5">
               {step.icon}
             </div>
@@ -301,7 +323,7 @@ function HowToUpdate({
         ))}
       </div>
 
-      {/* Note données */}
+      {/* Data note */}
       <div className="rounded-lg bg-muted/50 border border-border p-3 text-xs text-muted-foreground">
         <strong className="text-foreground">{t('howto.dataTitle')}</strong>{' '}
         {t('howto.dataDesc')}

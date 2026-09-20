@@ -2,40 +2,12 @@ import { NextResponse } from 'next/server'
 import { authenticate } from '@/lib/apiAuth'
 import { query } from '@/lib/db'
 import { getAccessibleAccount } from '@/lib/accountAccess'
-import { listFolders } from '@/lib/imap'
+import { listFolders, createFolder, renameFolder, deleteFolder } from '@/lib/imap'
+import { sanitizeFolderName, joinFolderPath, renamedPath, rewritePath, samePath, isDescendant, refuse } from '@/lib/folderActions'
+import { resolveFolder } from '@/lib/folderResolve'
+import { detectSpecials } from '@/lib/specialFolders'
 
 export const dynamic = 'force-dynamic'
-
-type SpecialType = 'inbox' | 'sent' | 'drafts' | 'spam' | 'trash' | null
-
-// RFC 6154 SPECIAL-USE attribute → special type mapping
-const SPECIAL_USE_MAP: Record<string, SpecialType> = {
-  '\\Inbox':   'inbox',
-  '\\Sent':    'sent',
-  '\\Drafts':  'drafts',
-  '\\Junk':    'spam',
-  '\\Trash':   'trash',
-  '\\Archive': null,
-  '\\Flagged': null,
-  '\\All':     null,
-}
-
-function detectSpecial(path: string, name: string, specialUse?: string): SpecialType {
-  // 1. Prefer RFC 6154 SPECIAL-USE flag — language-independent
-  if (specialUse && Object.prototype.hasOwnProperty.call(SPECIAL_USE_MAP, specialUse)) {
-    return SPECIAL_USE_MAP[specialUse]
-  }
-
-  // 2. Word-boundary regex on path/name — avoids false positives like "Sentiments"
-  const p = path.toLowerCase()
-  const n = name.toLowerCase()
-  if (p === 'inbox' || n === 'inbox') return 'inbox'
-  if (/\b(sent|envoy[eé]s?)\b/.test(p) || /\b(sent|envoy[eé]s?)\b/.test(n)) return 'sent'
-  if (/\b(drafts?|brouillons?)\b/.test(p) || /\b(drafts?|brouillons?)\b/.test(n)) return 'drafts'
-  if (/\b(junk|spam|pourriel|ind[eé]sirables?)\b/.test(p) || /\b(junk|spam|pourriel|ind[eé]sirables?)\b/.test(n)) return 'spam'
-  if (/\b(deleted|trash|corbeille|supprim[eé]s?)\b/.test(p) || /\b(deleted|trash|corbeille|supprim[eé]s?)\b/.test(n)) return 'trash'
-  return null
-}
 
 export async function GET(req: Request) {
   const authCtx = await authenticate(req)
@@ -96,12 +68,16 @@ export async function GET(req: Request) {
       return SYSTEM_KEYWORDS.some(kw => p.includes(kw) || n.includes(kw))
     }
 
+    const specials = detectSpecials(folders)
     const normalized = folders
       .filter(f => !isSystemFolder(f.path, f.name))
       .map(f => ({
         name: f.name,
         path: f.path,
-        special: detectSpecial(f.path, f.name, f.specialUse),
+        // The server's delimiter: without it the client cannot tell which folder sits
+        // UNDER which other one — and "delete" must refuse to run on a parent.
+        delimiter: f.delimiter ?? '/',
+        special: specials.get(f.path) ?? null,
       }))
 
     // Sort: special folders first (in order), then alphabetical
@@ -134,6 +110,102 @@ export async function GET(req: Request) {
     }))
 
     return NextResponse.json({ data: withCounts })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+/**
+ * Folder mutations. Permission is NOT decided here: `resolveFolder` evaluates
+ * `lib/folderActions.ts` against the facts reported by the IMAP server, and this route
+ * only rejects (403) what was refused there and runs the rest. A path the server does
+ * not know about never reaches IMAP.
+ */
+async function readBody(req: Request): Promise<Record<string, unknown>> {
+  try {
+    const body = await req.json()
+    return body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  } catch {
+    return {}
+  }
+}
+
+const asString = (v: unknown) => (typeof v === 'string' && v ? v : null)
+
+// POST — creates a folder at the root, or under `parent` when one is supplied.
+export async function POST(req: Request) {
+  const authCtx = await authenticate(req)
+  if (!authCtx) return refuse('unauthorized')
+
+  const body = await readBody(req)
+  const parent = asString(body.parent)
+
+  try {
+    const ctx = await resolveFolder(asString(body.accountId), authCtx.id, parent, ['organize'])
+    if (!ctx) return refuse('notFound')
+    if (!(parent ? ctx.can.createChild : ctx.can.create)) return refuse('forbidden')
+
+    const name = sanitizeFolderName(body.name, ctx.delimiter)
+    if (!name) return refuse('badName')
+    const path = joinFolderPath(parent ?? '', name, ctx.delimiter)
+    if (ctx.folders.some(f => samePath(f.path, path))) return refuse('exists')
+
+    await createFolder(ctx.config, path)
+    return NextResponse.json({ data: { path, name } })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+// PATCH — renames a folder in place (it stays under its current parent).
+export async function PATCH(req: Request) {
+  const authCtx = await authenticate(req)
+  if (!authCtx) return refuse('unauthorized')
+
+  const body = await readBody(req)
+
+  try {
+    const ctx = await resolveFolder(asString(body.accountId), authCtx.id, asString(body.path), ['organize'])
+    if (!ctx?.folder) return refuse('notFound')
+    if (!ctx.can.rename) return refuse('forbidden')
+
+    const name = sanitizeFolderName(body.name, ctx.delimiter)
+    if (!name) return refuse('badName')
+    const from = ctx.folder.path
+    const path = renamedPath(from, name, ctx.delimiter)
+    if (path === from) return NextResponse.json({ data: { path, name } })
+    if (ctx.folders.some(f => samePath(f.path, path))) return refuse('exists')
+
+    await renameFolder(ctx.config, from, path)
+    // IMAP renames the WHOLE subtree: the cache follows the same path, otherwise the
+    // subfolder rows stay orphaned under the old prefix (wrong unread counts).
+    for (const moved of ctx.folders.filter(f => f.path === from || isDescendant(f.path, from, ctx.delimiter))) {
+      const to = rewritePath(moved.path, from, path, ctx.delimiter)
+      await query('UPDATE messages_cache SET folder = $1 WHERE account_id = $2 AND folder = $3', [to, ctx.account.id, moved.path])
+      await query('UPDATE mailbox_stats SET folder = $1 WHERE account_id = $2 AND folder = $3', [to, ctx.account.id, moved.path])
+    }
+    return NextResponse.json({ data: { path, name } })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+// DELETE — removes a folder (never a special one, never a parent).
+export async function DELETE(req: Request) {
+  const authCtx = await authenticate(req)
+  if (!authCtx) return refuse('unauthorized')
+
+  const { searchParams } = new URL(req.url)
+
+  try {
+    const ctx = await resolveFolder(searchParams.get('account'), authCtx.id, searchParams.get('path'), ['delete'])
+    if (!ctx?.folder) return refuse('notFound')
+    if (!ctx.can.remove) return refuse('forbidden')
+
+    await deleteFolder(ctx.config, ctx.folder.path)
+    await query('DELETE FROM messages_cache WHERE account_id = $1 AND folder = $2', [ctx.account.id, ctx.folder.path])
+    await query('DELETE FROM mailbox_stats WHERE account_id = $1 AND folder = $2', [ctx.account.id, ctx.folder.path])
+    return NextResponse.json({ data: { path: ctx.folder.path } })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

@@ -1,17 +1,9 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
+import { isAdmin } from '@/lib/requireAdmin'
 
 export const dynamic = 'force-dynamic'
-
-async function requireAdmin(session: { user?: { id?: string } } | null) {
-  if (!session?.user?.id) return false
-  const rows = await query<{ role: string }>(
-    'SELECT role FROM users WHERE id = $1',
-    [session.user.id]
-  )
-  return rows[0]?.role === 'admin'
-}
 
 export async function PATCH(
   req: Request,
@@ -19,7 +11,7 @@ export async function PATCH(
 ) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await requireAdmin(session))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await isAdmin(session))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const body = await req.json()
@@ -48,7 +40,7 @@ export async function DELETE(
 ) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await requireAdmin(session))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await isAdmin(session))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   if (params.id === session.user?.id) {
     return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 })

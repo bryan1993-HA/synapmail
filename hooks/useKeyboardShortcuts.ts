@@ -8,8 +8,10 @@ interface ShortcutHandlers {
   onReply: (msg: Message) => void
   onReplyAll: (msg: Message) => void
   onForward: (msg: Message) => void
-  onDelete: (uid: string, accountId: string) => void
-  onMarkUnread: (uid: string, accountId: string) => void
+  // The WHOLE message, not (uid, account): the caller needs ITS folder to target
+  // the right message when the list mixes several of them (search results).
+  onDelete: (message: Message) => void
+  onMarkUnread: (message: Message) => void
   onFocusSearch: () => void
   currentMessage: Message | null
   composeOpen: boolean
@@ -63,13 +65,13 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         case 'Delete':
           if (currentMessage) {
             e.preventDefault()
-            onDelete(currentMessage.uid, currentMessage.accountId)
+            onDelete(currentMessage)
           }
           break
         case 'u':
           if (currentMessage) {
             e.preventDefault()
-            onMarkUnread(currentMessage.uid, currentMessage.accountId)
+            onMarkUnread(currentMessage)
           }
           break
         case '/':

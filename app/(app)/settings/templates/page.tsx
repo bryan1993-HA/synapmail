@@ -7,12 +7,14 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import useSWR from 'swr'
+import { useTranslations } from 'next-intl'
 import { Pencil, Trash2, Plus, LayoutTemplate } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { ComposeTemplate } from '@/types/template'
 import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
+import { RowMenu, ContextMenuItem, ContextMenuSeparator, MENU_ICON } from '@/components/ui/ContextMenu'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -53,6 +55,7 @@ function TemplateEditor({
 }
 
 export default function TemplatesPage() {
+  const tRow = useTranslations('settings.rowActions')
   const { data, mutate } = useSWR<{ data: ComposeTemplate[] }>('/api/templates', fetcher)
   const templates = data?.data ?? []
 
@@ -104,9 +107,9 @@ export default function TemplatesPage() {
     }
   }
 
-  const deleteTemplate = async (id: string) => {
-    if (!confirm('Supprimer ce template ?')) return
-    await fetch(`/api/templates/${id}`, { method: 'DELETE' })
+  const deleteTemplate = async (tpl: ComposeTemplate) => {
+    if (!confirm(tRow('templateDeleteConfirm', { name: tpl.name }))) return
+    await fetch(`/api/templates/${tpl.id}`, { method: 'DELETE' })
     await mutate()
   }
 
@@ -261,19 +264,20 @@ export default function TemplatesPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button
-                      onClick={() => startEdit(tpl)}
-                      className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => deleteTemplate(tpl.id)}
-                      className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  <div className="shrink-0">
+                    <RowMenu label={tRow('menu', { name: tpl.name })} itemsKey={tpl.id}>
+                      {close => (<>
+                        <ContextMenuItem
+                          itemKey="edit" icon={<Pencil className={MENU_ICON} />} label={tRow('edit')}
+                          onClick={() => startEdit(tpl)} onClose={close} enabled
+                        />
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          itemKey="delete" icon={<Trash2 className={MENU_ICON} />} label={tRow('templateDelete')}
+                          onClick={() => deleteTemplate(tpl)} onClose={close} enabled danger
+                        />
+                      </>)}
+                    </RowMenu>
                   </div>
                 </div>
                 {tpl.contentHtml && (

@@ -2,12 +2,14 @@
 
 import { useState, useMemo } from 'react'
 import useSWR from 'swr'
+import { useTranslations } from 'next-intl'
 import { Star, Trash2, Pencil, Plus, Search, X, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { Contact } from '@/types/contact'
 import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
+import { RowMenu, ContextMenuItem, ContextMenuSeparator, MENU_ICON } from '@/components/ui/ContextMenu'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -53,6 +55,7 @@ interface EditForm {
 }
 
 export default function ContactsPage() {
+  const tRow = useTranslations('settings.rowActions')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('score')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -115,9 +118,9 @@ export default function ContactsPage() {
     await mutate()
   }
 
-  const deleteContact = async (id: string) => {
-    if (!confirm('Supprimer ce contact ?')) return
-    await fetch(`/api/contacts/${id}`, { method: 'DELETE' })
+  const deleteContact = async (contact: Contact) => {
+    if (!confirm(tRow('contactDeleteConfirm', { name: contact.name || contact.email }))) return
+    await fetch(`/api/contacts/${contact.id}`, { method: 'DELETE' })
     await mutate()
   }
 
@@ -383,18 +386,19 @@ export default function ContactsPage() {
                   >
                     <Star className={cn('w-3.5 h-3.5', c.isStarred && 'fill-current')} />
                   </button>
-                  <button
-                    onClick={() => startEdit(c)}
-                    className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => deleteContact(c.id)}
-                    className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <RowMenu label={tRow('menu', { name: c.name || c.email })} itemsKey={c.id}>
+                    {close => (<>
+                      <ContextMenuItem
+                        itemKey="edit" icon={<Pencil className={MENU_ICON} />} label={tRow('edit')}
+                        onClick={() => startEdit(c)} onClose={close} enabled
+                      />
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        itemKey="delete" icon={<Trash2 className={MENU_ICON} />} label={tRow('contactDelete')}
+                        onClick={() => deleteContact(c)} onClose={close} enabled danger
+                      />
+                    </>)}
+                  </RowMenu>
                 </div>
               </div>
             )}

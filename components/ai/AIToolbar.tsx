@@ -6,7 +6,10 @@ import {
   Bot, FileText, MessageSquareDiff, Languages,
   Loader2, X, Clock, AlertCircle, Sparkles,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
+import { AIClientError, runAIAction, aiFailureKey, localAccessState } from '@/lib/aiClient'
+import { LocalAccessNotice } from '@/components/ai/LocalAccessNotice'
 import type { Message } from '@/types/email'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -25,22 +28,27 @@ interface Props {
 
 type AIAction = 'summarize' | 'reply' | 'translate_fr' | 'translate_en'
 
-function ComingSoonBadge() {
+function ComingSoonBadge({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[9px] font-semibold border border-amber-500/30">
       <Clock className="w-2 h-2" />
-      Bientôt
+      {label}
     </span>
   )
 }
 
 export function AIToolbar({ message, onReplyWithAI }: Props) {
+  const t = useTranslations('mail.ai')
   const { data } = useSWR<{ data: AISettingsData }>('/api/ai/settings', fetcher)
   const settings = data?.data
 
   const [loading, setLoading] = useState<AIAction | null>(null)
   const [result, setResult] = useState<{ action: AIAction; text: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** A refused browser permission gets its own box, never the model-side help. */
+  const [accessDenied, setAccessDenied] = useState(false)
+  /** Shown while the browser is about to ask for access to this device. */
+  const [accessPrompt, setAccessPrompt] = useState(false)
   const [showTranslatePicker, setShowTranslatePicker] = useState(false)
 
   if (!settings?.configured) return null
@@ -49,7 +57,12 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
     setLoading(action)
     setResult(null)
     setError(null)
+    setAccessDenied(false)
     setShowTranslatePicker(false)
+    // Say what is about to happen BEFORE the call, since the call is what
+    // makes the browser ask. Any other state (granted, denied, or a browser
+    // that knows no such permission) says nothing here.
+    setAccessPrompt(await localAccessState() === 'prompt')
 
     const content = message.bodyHtml || message.bodyPlain || message.subject || ''
 
@@ -60,21 +73,15 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
     else { apiAction = action }
 
     try {
-      const res = await fetch('/api/ai/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: apiAction, content, ...extra }),
-      })
-      const json = await res.json() as { data?: { result: string }; error?: string }
-      if (res.ok && json.data?.result) {
-        setResult({ action, text: json.data.result })
-        if (action === 'reply') onReplyWithAI(json.data.result)
-      } else {
-        setError(json.error || 'Erreur IA')
-      }
-    } catch {
-      setError('Impossible de joindre le service IA')
+      // The mailbox decides whether the guard applies — see lib/accounts.ts.
+      const text = await runAIAction({ action: apiAction, content, accountId: message.accountId, ...extra })
+      setResult({ action, text })
+      if (action === 'reply') onReplyWithAI(text)
+    } catch (e: unknown) {
+      setAccessDenied(e instanceof AIClientError && e.kind === 'permission')
+      setError(t(aiFailureKey(e), { origin: location.origin }))
     } finally {
+      setAccessPrompt(false)
       setLoading(null)
     }
   }
@@ -87,7 +94,7 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
       <div className="flex items-center gap-1 px-4 py-1.5 bg-violet-500/5">
         <Bot className="w-3.5 h-3.5 text-violet-500 shrink-0 mr-1" />
 
-        {/* TL;DR */}
+        {/* Summarize */}
         {settings.featureSummarize && (
           <button
             type="button"
@@ -103,7 +110,7 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
               ? <Loader2 className="w-3 h-3 animate-spin" />
               : <FileText className="w-3 h-3" />
             }
-            TL;DR
+            {t('actions.summarize')}
           </button>
         )}
 
@@ -123,7 +130,7 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
               ? <Loader2 className="w-3 h-3 animate-spin" />
               : <MessageSquareDiff className="w-3 h-3" />
             }
-            Répondre avec l&apos;IA
+            {t('actions.reply')}
           </button>
         )}
 
@@ -144,7 +151,7 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
                 ? <Loader2 className="w-3 h-3 animate-spin" />
                 : <Languages className="w-3 h-3" />
               }
-              Traduire
+              {t('actions.translate')}
             </button>
             {showTranslatePicker && (
               <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[130px]">
@@ -153,14 +160,14 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
                   onClick={() => callAction('translate_fr')}
                   className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
                 >
-                  🇫🇷 En français
+                  {t('translateToFr')}
                 </button>
                 <button
                   type="button"
                   onClick={() => callAction('translate_en')}
                   className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
                 >
-                  🇬🇧 In English
+                  {t('translateToEn')}
                 </button>
               </div>
             )}
@@ -172,24 +179,31 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
           type="button"
           disabled
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground/40 cursor-not-allowed"
-          title="Bientôt disponible"
+          title={t('soonTitle')}
         >
           <Sparkles className="w-3 h-3" />
-          Tâches
-          <ComingSoonBadge />
+          {t('tasks')}
+          <ComingSoonBadge label={t('soonBadge')} />
         </button>
 
         <button
           type="button"
           disabled
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground/40 cursor-not-allowed"
-          title="Bientôt disponible"
+          title={t('soonTitle')}
         >
           <Sparkles className="w-3 h-3" />
-          Priorité
-          <ComingSoonBadge />
+          {t('priority')}
+          <ComingSoonBadge label={t('soonBadge')} />
         </button>
       </div>
+
+      {/* The browser is about to ask for access to this device. */}
+      {accessPrompt && (
+        <div className="px-4 py-2 border-t border-border">
+          <LocalAccessNotice state="prompt" />
+        </div>
+      )}
 
       {/* Result panel */}
       {(result || error) && (
@@ -205,19 +219,22 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
             <X className="w-3.5 h-3.5" />
           </button>
 
-          {error && (
-            <div className="flex items-start gap-2 text-destructive text-xs pr-6">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
+          {error && (accessDenied
+            ? <div className="pr-6"><LocalAccessNotice state="denied" /></div>
+            : (
+              <div className="flex items-start gap-2 text-destructive text-xs pr-6">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )
           )}
 
           {result && result.action !== 'reply' && (
             <div className="pr-6">
               <p className="text-xs font-semibold text-violet-600 dark:text-violet-400 mb-1.5 flex items-center gap-1.5">
                 <Bot className="w-3 h-3" />
-                {result.action === 'summarize' && 'Résumé'}
-                {(result.action === 'translate_fr' || result.action === 'translate_en') && 'Traduction'}
+                {result.action === 'summarize' && t('resultSummary')}
+                {(result.action === 'translate_fr' || result.action === 'translate_en') && t('resultTranslation')}
               </p>
               <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap max-h-[30vh] sm:max-h-[45vh] overflow-y-auto break-words">{result.text}</p>
             </div>
@@ -227,7 +244,7 @@ export function AIToolbar({ message, onReplyWithAI }: Props) {
             <div className="pr-6">
               <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1.5 flex items-center gap-1.5">
                 <MessageSquareDiff className="w-3 h-3" />
-                Brouillon IA — ouvert dans la composition
+                {t('resultReply')}
               </p>
               <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-3">{result.text}</p>
             </div>

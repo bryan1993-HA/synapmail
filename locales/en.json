@@ -30,7 +30,7 @@
       "submit": "Accept invitation",
       "passwordMismatch": "Passwords do not match",
       "invalidToken": "This invitation is invalid or has expired",
-      "success": "Account created — redirecting to sign in…",
+      "success": "Account created. Redirecting to sign in…",
       "backToLogin": "Back to sign in"
     }
   },
@@ -47,6 +47,8 @@
     "compose": "Compose",
     "templates": "Templates",
     "settings": "Settings",
+    "userMenu": "Account",
+    "signOut": "Sign out",
     "noMessages": "No messages",
     "loadError": "Couldn't load messages",
     "loadErrorDesc": "Something went wrong. Check the account connection and try again.",
@@ -64,6 +66,13 @@
     "reply": "Reply",
     "replyAll": "Reply all",
     "forward": "Forward",
+    "forwardedSubject": "Fwd: {count} messages",
+    "forwardedAttached": "{count} messages attached",
+    "forwardInvalid": "This forward request is invalid.",
+    "forwardTooMany": "You can forward at most {count} messages at once.",
+    "forwardTooLarge": "These messages exceed the {count} MB attachment limit.",
+    "forwardMissing": "{count, plural, one {# of the selected messages is no longer in this folder} other {# of the selected messages are no longer in this folder}}. Nothing was sent.",
+    "forwardOriginDenied": "The mailbox these messages came from is no longer available.",
     "delete": "Delete",
     "archive2": "Archive",
     "markRead": "Mark as read",
@@ -85,7 +94,9 @@
     "dashboard": "Dashboard",
     "search": "Search",
     "searchAccounts": "Search accounts…",
+    "searchMail": "Search mail",
     "noAccountMatch": "No matching account",
+    "accountTooltip": "{name} · {email}",
     "unreadOtherAccounts": "{count} unread in other accounts",
     "grpToday": "Today",
     "grpYesterday": "Yesterday",
@@ -112,7 +123,84 @@
     "reason_vip": "Key contact",
     "reason_frequent": "Frequent",
     "reason_starred": "Starred",
-    "reason_attachment": "Attachment"
+    "reason_attachment": "Attachment",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "folders": "Folders",
+    "switchAccount": "Switch account",
+    "searchAllFolders": "All folders",
+    "searchThisFolder": "This folder",
+    "clearSearch": "Clear search",
+    "searchResults": "{count, plural, one {# result} other {# results}} for “{query}”",
+    "searching": "Searching…",
+    "noSearchResults": "No results",
+    "searchFieldsLabel": "sender, recipients, subject",
+    "searchTruncated": "First {shown} results of {total}",
+    "searchCount": "{count, plural, one {# result} other {# results}}",
+    "searchShown": "{shown} shown",
+    "searchDetails": "Searched in {fields} · {scope}",
+    "searchProgress": "{searched} of {folders, plural, one {# folder} other {# folders}}",
+    "searchStop": "Stop",
+    "searchNoBodyHint": "Message bodies are not searched (mail server limitation). Try a word from the subject or an address.",
+    "refresh": "Refresh",
+    "flag": "Flag",
+    "moreActions": "More actions",
+    "selectionCount": "{count} selected",
+    "confirmDeleteSelection": "Delete {count} messages?",
+    "flagged": "Flagged",
+    "flagRemove": "Remove flag",
+    "flags": {
+      "red": "Red",
+      "orange": "Orange",
+      "yellow": "Yellow",
+      "green": "Green",
+      "blue": "Blue",
+      "purple": "Purple",
+      "gray": "Grey"
+    },
+    "noFolders": "No folder",
+    "messageList": "Message list",
+    "folderNew": "New folder…",
+    "folderNewChild": "New subfolder…",
+    "folderRename": "Rename…",
+    "folderMarkRead": "Mark all as read",
+    "folderEmpty": "Empty",
+    "folderDelete": "Delete folder…",
+    "folderNamePlaceholder": "Folder name",
+    "folderNameInvalid": "That name can’t be used. No “{delimiter}”, no blank name, 255 characters max.",
+    "folderConfirmDelete": "Delete “{name}” and its {count} messages?",
+    "folderConfirmEmpty": "Permanently delete the {count} messages in “{name}”?",
+    "folderHasChildren": "This folder contains subfolders. Delete them first.",
+    "folderActionFailed": "Couldn't apply that to the folder",
+    "ai": {
+      "errors": {
+        "server": "The assistant could not be reached.",
+        "unreachable": "No local model is listening at that address on this device.",
+        "cors": "A local model answered but your browser blocked it: allow the origin {origin}.",
+        "model": "The local model returned an error.",
+        "permission": "Your browser blocked access to apps running on this device."
+      },
+      "access": {
+        "prompt": "Your browser will ask permission to reach apps running on this device. Accept it to continue.",
+        "deniedStep1": "Click the icon at the left of the address bar, then open the site settings.",
+        "deniedStep2": "Allow access to the local network (apps on this device), then try again."
+      },
+      "actions": {
+        "summarize": "Summarize",
+        "reply": "Reply with AI",
+        "improve": "Improve / Tone",
+        "translate": "Translate"
+      },
+      "translateToFr": "In French",
+      "translateToEn": "In English",
+      "tasks": "Tasks",
+      "priority": "Priority",
+      "soonBadge": "Soon",
+      "soonTitle": "Coming soon",
+      "resultSummary": "Summary",
+      "resultTranslation": "Translation",
+      "resultReply": "AI draft, opened in the composer"
+    }
   },
   "compose": {
     "newMessage": "New message",
@@ -190,11 +278,26 @@
       "saved": "Saved",
       "unsaved": "Unsaved changes"
     },
+    "rowActions": {
+      "menu": "Actions for {name}",
+      "edit": "Edit",
+      "apiKeyRevoke": "Revoke this key…",
+      "apiKeyRevokeConfirm": "Revoke the key \"{name}\"? Any application using it loses access immediately, and a revoked key cannot be restored.",
+      "contactDelete": "Delete this contact…",
+      "contactDeleteConfirm": "Delete the contact \"{name}\" from this webmail? It will be suggested again the next time you exchange messages.",
+      "signatureDelete": "Delete this signature…",
+      "signatureDeleteConfirm": "Delete the signature \"{name}\"? Messages already sent keep it, but it cannot be restored here.",
+      "templateDelete": "Delete this template…",
+      "templateDeleteConfirm": "Delete the template \"{name}\"? It cannot be restored.",
+      "pgpKeyDelete": "Delete this key…",
+      "pgpKeyDeleteConfirm": "Delete {name}'s public key? You will no longer be able to encrypt messages to them until you import it again.",
+      "ruleDelete": "Delete this rule…",
+      "ruleDeleteConfirm": "Delete the rule \"{name}\"? Messages it already sorted stay where they are, but the rule cannot be restored."
+    },
     "accounts": {
       "title": "Email accounts",
       "add": "Add account",
       "edit": "Edit",
-      "delete": "Delete",
       "setDefault": "Set as default",
       "name": "Account name",
       "email": "Email address",
@@ -211,8 +314,14 @@
       "save": "Save",
       "cancel": "Cancel",
       "color": "Color",
+      "colorAuto": "Automatic",
+      "colorCustom": "Custom colour",
+      "colorHex": "Hex code",
+      "colorInvalid": "Use a colour like #0ea5e9",
       "noAccounts": "No email accounts configured",
       "noAccountsDesc": "Add your first email account to get started",
+      "promptGuard": "Instruction-injection protection",
+      "promptGuardDesc": "Tells agents reading this mailbox through the API that message content is untrusted data and must never be obeyed, and flags requests hidden from the eye. Extra layer of defence, not a guarantee.",
       "shares": {
         "title": "Sharing",
         "noShares": "This account isn't shared with anyone",
@@ -220,8 +329,6 @@
         "expiryLabel": "Expiration (optional)",
         "sendInvite": "Send invitation",
         "inviteFailed": "Failed to send invitation",
-        "revoke": "Revoke",
-        "revokeConfirm": "Revoke this invitee's access?",
         "emailSendFailedWarning": "The invitation was created but the email could not be sent.",
         "expiresOn": "Expires on {date}",
         "status": {
@@ -236,7 +343,36 @@
           "canOrganize": "Organize (mark, move, snooze)",
           "canManageRules": "Manage rules",
           "canManageSignatures": "Manage signatures"
-        }
+        },
+        "rowMenu": "Actions for {name}",
+        "revokeLabel": "Remove access…",
+        "revokeNamed": "Remove {email}’s access to this mailbox? They lose it immediately; you can invite them again later."
+      },
+      "receivedShares": {
+        "title": "Inboxes shared with me",
+        "empty": "No one has shared an inbox with you",
+        "sharedBy": "Shared by {name}",
+        "leaveFailed": "Failed to remove the share",
+        "rowMenu": "Actions for {name}",
+        "leaveLabel": "Leave this share…",
+        "leaveNamed": "Leave the mailbox \"{email}\" shared by {owner}? You lose access to it; the owner can share it again."
+      },
+      "rowMenu": "Actions for {name}",
+      "deleteAccount": "Delete account…",
+      "deleteConfirm": "Delete the account \"{email}\" from this webmail? Your messages stay with your provider, only the access from here is removed.",
+      "share": "Share",
+      "passwordUnchanged": "(unchanged)",
+      "passwordUnchangedHelp": "Leave empty to keep the saved password.",
+      "tested": {
+        "stored": "Tested with the saved password.",
+        "submitted": "Tested with the new password you typed.",
+        "oauth": "Nothing to test here: this mailbox signs in with a token, not a password."
+      },
+      "testFailure": {
+        "credentials": "the server refused these credentials",
+        "unreachable": "the server could not be reached",
+        "other": "the server refused the connection",
+        "password_required": "You changed the server or the username: type the password to test these new settings."
       }
     },
     "profile": {
@@ -278,6 +414,7 @@
       "light": "Light",
       "dark": "Dark",
       "system": "System",
+      "cycleTheme": "Theme: {current}. Click to switch to {next}",
       "language": "Language",
       "languageDesc": "Interface language (requires a reload)"
     },
@@ -324,7 +461,84 @@
       "runNow": "Run now",
       "noRules": "No rules configured",
       "noRulesDesc": "Rules are automatically applied to new emails.",
-      "templates": "Quick start — Templates"
+      "templates": "Quick start, templates"
+    },
+    "ai": {
+      "pageDescription": "Summaries, suggested replies and smart sorting",
+      "configured": "Configured",
+      "stepProvider": "1. Provider",
+      "stepAccess": "2. Access",
+      "tagline": {
+        "serverKey": "API key (called from the server)",
+        "ollamaServer": "Ollama reachable from the server",
+        "local": "Called from your browser, nothing leaves your machine"
+      },
+      "provider": {
+        "local": "Local, on this device"
+      },
+      "detectOllamaMissing": "Ollama was not found FROM THE SERVER. If it runs on your computer, pick \"Local, on this device\": the call will leave from the browser.",
+      "testOk": "Connection OK. Answer: \"{answer}\"",
+      "local": {
+        "urlLabel": "Local address",
+        "modelHint": "Ollama, LM Studio or llama.cpp running on your computer",
+        "remoteRefused": "Remote address: for a remote address, pick the API key option.",
+        "detectFound": "{label} found at {url}",
+        "startModel": "Start the model on this computer (ollama serve, LM Studio, llama.cpp).",
+        "checkAddress": "Check the address: {url} for Ollama.",
+        "remoteNeedsKey": "The model must run on THIS machine: a remote address needs an API key.",
+        "corsLmStudio": "LM Studio: enable CORS in the local server, with the origin {origin}.",
+        "corsSafari": "Safari blocks this call: use Chrome, Edge or Firefox.",
+        "os": {
+          "mac": "macOS",
+          "windows": "Windows (PowerShell)",
+          "linux": "Linux (systemd)"
+        },
+        "corsRefusesSite": "{label} answers on port {port} but refuses this site.",
+        "corsIntro": "Ollama only answers pages served from your own computer. Run this command once on yours to allow this site, then Ollama restarts by itself.",
+        "thenDetectAgain": "Then click Detect again.",
+        "otherSystems": "Other systems",
+        "copy": "Copy",
+        "copied": "Copied",
+        "originRefused": "This page address cannot be allowed by a command.",
+        "loopbackOnly": "Detection only looks at this computer (ports 11434, 1234, 8080): the local network is not scanned."
+      },
+      "detect": "Detect automatically",
+      "detecting": "Detecting",
+      "detectError": "Detection failed",
+      "model": "Model",
+      "saveAndTest": "Save and test",
+      "saving": "Saving",
+      "testing": "Testing",
+      "saved": "Saved",
+      "failed": "Failed",
+      "advanced": "Advanced settings",
+      "systemPrompt": "System prompt",
+      "systemPromptPlaceholder": "For example: you are a professional email assistant. Always answer concisely.",
+      "features": "Features",
+      "soonTitle": "Coming soon",
+      "soonBadge": "Soon",
+      "keySaved": "(key already saved)",
+      "getKey": "Get a key",
+      "keyLabel": {
+        "anthropic": "Anthropic API key",
+        "openai": "OpenAI API key",
+        "optional": "API key (if required)"
+      },
+      "urlLabel": {
+        "ollama": "Ollama URL",
+        "server": "Server URL"
+      },
+      "modelHint": {
+        "custom": "A model name your endpoint accepts"
+      },
+      "soon": {
+        "inlineCompletion": "Inline completion",
+        "priorityScore": "Automatic priority score",
+        "taskExtraction": "Task extraction",
+        "mailboxChat": "Chat with the mailbox",
+        "smartRules": "Smart AI rules",
+        "personas": "Personas per account"
+      }
     }
   },
   "admin": {
@@ -341,6 +555,25 @@
       "actions": "Actions",
       "delete": "Delete",
       "confirmDelete": "Are you sure you want to delete this user?"
+    },
+    "branding": {
+      "title": "Identity",
+      "description": "The name and the icon this instance shows in the browser tab, for everyone.",
+      "nameLabel": "Name",
+      "iconLabel": "Tab icon",
+      "iconHint": "PNG, ICO, JPEG or WebP, 256 KiB at most.",
+      "choose": "Choose a file",
+      "save": "Save",
+      "saving": "Saving",
+      "saved": "Saved",
+      "resetName": "Restore the default name",
+      "resetIcon": "Restore the default icon",
+      "preview": "Preview",
+      "errors": {
+        "branding_too_large": "This file is over 256 KiB.",
+        "branding_bad_type": "This file is not a PNG, ICO, JPEG or WebP image.",
+        "branding_bad_name": "Enter a name of 1 to 60 characters."
+      }
     }
   },
   "contacts": {
@@ -377,7 +610,7 @@
     "available": "Synapmail {version} is available",
     "moreInfo": "Learn more",
     "dismiss": "Dismiss",
-    "modalTitle": "Update available — {version}",
+    "modalTitle": "Update available, {version}",
     "tabReleases": "What's new",
     "tabHowTo": "How to update",
     "noNotes": "No release notes.",
@@ -394,7 +627,7 @@
       "step4Title": "Verify startup",
       "step4Desc": "Wait until you see \"Ready\" in the logs. Press Ctrl+C to stop following.",
       "dataTitle": "Your data is safe.",
-      "dataDesc": "The PostgreSQL database lives in a separate Docker volume — it is never removed during a rebuild."
+      "dataDesc": "The PostgreSQL database lives in a separate Docker volume. It is never removed during a rebuild."
     }
   },
   "dashboard": {
@@ -419,7 +652,7 @@
     "noneScheduled": "none pending",
     "focusTitle": "Focus",
     "focusSubtitle": "prioritised automatically",
-    "focusEmpty": "Nothing urgent — inbox under control.",
+    "focusEmpty": "Nothing urgent. Inbox under control.",
     "viewAll": "View all",
     "reasonInvoice": "Invoice",
     "reasonDeadline": "Deadline",
@@ -505,12 +738,10 @@
       "uploadFile": "Or choose a .asc file",
       "invalidKey": "Invalid PGP public key block",
       "empty": "No contact keys imported",
-      "delete": "Delete",
-      "deleteConfirm": "Delete this contact key?",
       "add": "Add"
     },
     "compose": {
-      "encryptToggleOn": "Encrypted message — click to disable",
+      "encryptToggleOn": "Encrypted message, click to disable",
       "encryptToggleAvailable": "Encrypt this message (PGP)",
       "readReceiptDisabled": "Read receipts aren't available for an encrypted message",
       "attachmentsBlocked": "Attachments aren't supported for encrypted messages in this version",
@@ -542,6 +773,40 @@
     "search": "Search",
     "refresh": "Refresh",
     "close": "Close",
-    "noResults": "No results found"
+    "noResults": "No results found",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
+  },
+  "omnibar": {
+    "sectionAccounts": "Mailboxes",
+    "sectionActions": "Actions",
+    "sectionSettings": "Settings",
+    "searchMailFor": "Search \"{query}\" in mail",
+    "themeLight": "Light theme",
+    "themeDark": "Dark theme",
+    "themeSystem": "System theme",
+    "themeLightKeywords": "light, day, bright, clair, theme",
+    "themeDarkKeywords": "dark, night, sombre, theme",
+    "themeSystemKeywords": "system, auto, automatic, os, systeme, theme",
+    "languageAction": "Language: {name}",
+    "languageKeywords": "language, locale, translation, i18n",
+    "language": "Language",
+    "dashboardKeywords": "dashboard, overview, home, stats",
+    "composeKeywords": "compose, new message, write, mail",
+    "keywords": {
+      "profile": "profile, name, password, account, identity",
+      "appearance": "appearance, theme, dark, light, system, language, locale, display",
+      "reading": "reading, reading pane, preview",
+      "notifications": "notifications, desktop, alerts, sound",
+      "composition": "composition, compose, undo send, delay, writing",
+      "accounts": "accounts, mailbox, imap, smtp, add account, sharing, color",
+      "signatures": "signature, footer, sign off",
+      "templates": "templates, canned, snippets, boilerplate",
+      "contacts": "contacts, address book, people",
+      "rules": "rules, filters, sieve, automation",
+      "ai": "ai, copilot, assistant, llm, model",
+      "pgp": "pgp, encryption, gpg, key, privacy",
+      "apiKeys": "api, key, token, bearer, mcp, agent, integration"
+    }
   }
 }

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { useSession } from 'next-auth/react'
 import { User } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Label } from '@/components/ui/label'
 import {
   SettingsPage, SettingsHeader, SettingsSection, SaveBar,
@@ -116,8 +117,7 @@ export default function ProfilePage() {
         <SettingsSection title={t('password')}>
           <div className="space-y-1.5">
             <Label>{t('currentPassword')}</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={currentPassword}
               onChange={e => setCurrentPassword(e.target.value)}
               placeholder={t('currentPasswordPlaceholder')}
@@ -127,8 +127,7 @@ export default function ProfilePage() {
 
           <div className="space-y-1.5">
             <Label>{t('newPassword')}</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
               placeholder={t('newPasswordPlaceholder')}
@@ -138,8 +137,7 @@ export default function ProfilePage() {
 
           <div className="space-y-1.5">
             <Label>{t('confirmPassword')}</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               autoComplete="new-password"

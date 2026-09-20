@@ -5,7 +5,9 @@ import useSWR from 'swr'
 import { UserPlus, Trash2, ShieldCheck, User as UserIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { cn } from '@/lib/utils'
+import { BrandingSection } from '@/components/admin/BrandingSection'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -70,6 +72,8 @@ export default function AdminUsersPage() {
 
   return (
     <div className="p-8 max-w-3xl">
+      <BrandingSection />
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Gestion des utilisateurs</h1>
         <Button size="sm" onClick={() => { setShowForm(f => !f); setError(null) }} className="gap-1.5">
@@ -93,7 +97,7 @@ export default function AdminUsersPage() {
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Mot de passe</label>
-              <Input value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" type="password" className="h-8 text-sm" />
+              <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="h-8 text-sm" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Rôle</label>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { authenticate } from '@/lib/apiAuth'
 import { query } from '@/lib/db'
+import { accountOrderBy } from '@/lib/accounts'
 import { encrypt } from '@/lib/encrypt'
 
 export const dynamic = 'force-dynamic'
@@ -16,11 +17,14 @@ export async function GET(req: Request) {
               a.imap_host AS "imapHost", a.imap_port AS "imapPort", a.imap_secure AS "imapSecure",
               a.smtp_host AS "smtpHost", a.smtp_port AS "smtpPort", a.smtp_secure AS "smtpSecure",
               a.username, a.is_default AS "isDefault", a.color,
-              a.oauth_provider AS "oauthProvider", a.created_at AS "createdAt",
+              a.oauth_provider AS "oauthProvider", a.prompt_guard AS "promptGuard",
+              a.badge_color AS "badgeColor",
+              a.created_at AS "createdAt",
               -- authoritative SEARCH UNSEEN count (mailbox_stats), falling back to
               -- the cached-row count until the first background sync populates it
               COALESCE(s.unread_count, u.cnt, 0)::int AS "unreadCount",
               false AS "isShared", NULL::text AS "ownerName", NULL::timestamptz AS "expiresAt",
+              NULL::uuid AS "shareId",
               true AS "canSend", true AS "canDelete", true AS "canOrganize",
               true AS "canManageRules", true AS "canManageSignatures"
        FROM email_accounts a
@@ -39,9 +43,12 @@ export async function GET(req: Request) {
               a.imap_host AS "imapHost", a.imap_port AS "imapPort", a.imap_secure AS "imapSecure",
               a.smtp_host AS "smtpHost", a.smtp_port AS "smtpPort", a.smtp_secure AS "smtpSecure",
               a.username, false AS "isDefault", a.color,
-              a.oauth_provider AS "oauthProvider", a.created_at AS "createdAt",
+              a.oauth_provider AS "oauthProvider", a.prompt_guard AS "promptGuard",
+              a.badge_color AS "badgeColor",
+              a.created_at AS "createdAt",
               COALESCE(ms.unread_count, um.cnt, 0)::int AS "unreadCount",
               true AS "isShared", owner.name AS "ownerName", sh.expires_at AS "expiresAt",
+              sh.id AS "shareId",
               sh.can_send AS "canSend", sh.can_delete AS "canDelete", sh.can_organize AS "canOrganize",
               sh.can_manage_rules AS "canManageRules", sh.can_manage_signatures AS "canManageSignatures"
        FROM account_shares sh
@@ -57,7 +64,7 @@ export async function GET(req: Request) {
        WHERE sh.invitee_user_id = $1 AND sh.status = 'active'
          AND (sh.expires_at IS NULL OR sh.expires_at > NOW())
 
-       ORDER BY "isDefault" DESC, "createdAt" ASC`,
+       ${accountOrderBy({ isDefault: '"isDefault"', createdAt: '"createdAt"', id: 'id' })}`,
       [authCtx.id]
     )
 

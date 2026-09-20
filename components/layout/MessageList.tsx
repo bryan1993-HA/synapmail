@@ -1,16 +1,26 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { useTranslations } from 'next-intl'
-import { RefreshCw, Search, X, Paperclip, CheckSquare, Square, Trash2, Mail, MailOpen, MoveRight, ChevronDown, Eye, EyeOff, Archive, Clock } from 'lucide-react'
+import { useLocale, useTranslations } from 'next-intl'
+import { RefreshCw, Search, X, Paperclip, CheckSquare, Square, Eye, EyeOff, Flag, Info } from 'lucide-react'
+import { MAIL_SELECTION_COUNT_ATTR, useMailSelection } from '@/lib/mailSelection'
+import { MAIL_ORIGIN_ATTR, groupByOrigin, originKey, type MessageOrigin } from '@/lib/mailOrigin'
+import { DEFAULT_FLAG_KEY, MAIL_LIST_FILTERS, flagByKey, type MailListFilter } from '@/lib/flags'
 import { cn } from '@/lib/utils'
+import { formatRowDate } from '@/lib/dates'
+import {
+  EMPTY_SEARCH_STREAM, SCOPE_ALL, SCOPE_FOLDER, SCOPE_PARAM, SEARCH_PARAM, STREAM_PARAM,
+  accumulateSearchStream, isSearchQuery, parseNdjsonChunk,
+  type SearchField, type SearchScope, type SearchStreamChunk, type SearchStreamState,
+} from '@/lib/search'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { Message, Folder, ReadReceipt } from '@/types/email'
 import type { EmailAccount } from '@/types/account'
 import { MessageContextMenu, type ContextMenuState } from '@/components/ui/MessageContextMenu'
+import { IconTooltip } from '@/components/ui/IconTooltip'
+import { ThinScroll } from './ThinScroll'
 import { ScheduledPopover } from '@/components/mail/ScheduledPopover'
 import { SnoozePopover } from '@/components/mail/SnoozePopover'
-import { snoozePresets } from '@/lib/snooze-presets'
 
 const fetcher = async (url: string) => {
   const res = await fetch(url)
@@ -18,15 +28,15 @@ const fetcher = async (url: string) => {
   return res.json()
 }
 
-const formatDate = (iso: string) => {
-  const d = new Date(iso)
-  const now = new Date()
-  const isToday = d.toDateString() === now.toDateString()
-  if (isToday) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const isThisYear = d.getFullYear() === now.getFullYear()
-  if (isThisYear) return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
-  return d.toLocaleDateString([], { year: '2-digit', month: 'short', day: 'numeric' })
-}
+// Marquee selection. Below this threshold, the gesture stays a click:
+// it is also the threshold the system file explorer uses.
+const MARQUEE_MIN_PX = 4
+// Sensitive band along the container edges, step and rate of the automatic
+// scrolling during the gesture: measured by hand on the bench, slow enough to
+// stay aimable, brisk enough to cross a page.
+const MARQUEE_EDGE_PX = 40
+const MARQUEE_SCROLL_PX = 24
+const MARQUEE_SCROLL_MS = 50
 
 const AVATAR_COLORS = [
   'bg-blue-500', 'bg-violet-500', 'bg-emerald-500', 'bg-amber-500',
@@ -107,26 +117,34 @@ const DEFAULT_PERMISSIONS: MailPermissions = {
 
 interface Props {
   folder: string
-  selectedUid: string | null
-  onSelect: (uid: string, accountId: string) => void
+  /** Open message, with ITS origin: a uid alone would designate several messages. */
+  selectedOrigin: MessageOrigin | null
+  onSelect: (origin: MessageOrigin) => void
   onSelectThread: (messages: Message[], subject: string) => void
   activeAccountId?: string | null
-  searchInputRef?: React.RefObject<HTMLInputElement>
+  /** Current search, carried by the mailbox URL and driven by the app bar. */
+  search?: string
+  searchScope?: SearchScope
   permissions?: MailPermissions
 }
 
-interface AppSettings { thread_view: boolean; messages_per_page: number; mail_density: DensityMode }
+interface AppSettings {
+  thread_view: boolean; messages_per_page: number; mail_density: DensityMode
+  /** Displayed mailbox, as stored: what tells whether the received account is the right one. */
+  active_account_id: string | null
+}
 
-export function MessageList({ folder, onSelect, onSelectThread, activeAccountId, searchInputRef, permissions }: Props) {
+export function MessageList({ folder, selectedOrigin, onSelect, onSelectThread, activeAccountId, search = '', searchScope = SCOPE_FOLDER, permissions }: Props) {
   const perms = permissions ?? DEFAULT_PERMISSIONS
   const t = useTranslations('mail')
-  const [filter, setFilter] = useState<'all' | 'unread'>('all')
+  const locale = useLocale()
+  // Shared state: the list is the ONLY one to publish and to register actions.
+  const { publish, register } = useMailSelection()
+  const [filter, setFilter] = useState<MailListFilter>('all')
   const [page, setPage] = useState(1)
   const [accumulated, setAccumulated] = useState<Message[]>([])
   const [refreshKey, setRefreshKey] = useState(0)
   const [readUids, setReadUids] = useState<Set<string>>(new Set())
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedThreadKey, setSelectedThreadKey] = useState<string | null>(null)
 
   const { data: settingsData } = useSWR<{ data: AppSettings }>('/api/settings', fetcher)
@@ -147,13 +165,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   const compact = density === 'compact'
 
   // Bulk selection
-  const [checkedUids, setCheckedUids] = useState<Set<string>>(new Set())
-  const [showMoveMenu, setShowMoveMenu] = useState(false)
-  const moveMenuRef = useRef<HTMLDivElement>(null)
-
-  // Per-row snooze menu
-  const [snoozeFor, setSnoozeFor] = useState<string | null>(null)
-  const snoozeRef = useRef<HTMLDivElement>(null)
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
 
   // Context menu
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -161,15 +173,29 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   // Drag state
   const [draggingUid, setDraggingUid] = useState<string | null>(null)
 
+  // Marquee selection: only the DRAWN state lives in the render;
+  // the gesture itself (origin, previous selection, additive mode) stays in a
+  // ref: it changes on every pixel and must not re-render anything.
+  const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  const marqueeRef = useRef<{
+    startX: number; startY: number; startScroll: number
+    /** Last known pointer position: this is what gives the DIRECTION. */
+    lastX: number; lastY: number
+    additive: boolean; before: Set<string>; armed: boolean
+    /** Has a rectangle really been drawn? Armed is not enough: a plain click arms it too. */
+    drew: boolean
+  } | null>(null)
+
+  // File-explorer style selection: the last clicked row is the anchor of a
+  // Shift-click range. A ref is enough: it drives no render.
+  const rangeAnchorKey = useRef<string | null>(null)
+
   // Infinite scroll — sentinel + observer replace the "load more" button
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const loadingLockRef = useRef(0) // last page auto-requested — prevents re-firing while in flight
 
   const prevListKey = useRef(`${folder}|${activeAccountId ?? ''}`)
-  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const internalSearchRef = useRef<HTMLInputElement>(null)
-  const effectiveSearchRef = searchInputRef ?? internalSearchRef
 
   useEffect(() => {
     const listKey = `${folder}|${activeAccountId ?? ''}`
@@ -179,63 +205,112 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
       setAccumulated([])
       loadingLockRef.current = 0
       setReadUids(new Set())
-      setSearchQuery('')
-      setDebouncedSearch('')
       setSelectedThreadKey(null)
-      setCheckedUids(new Set())
-      setSnoozeFor(null)
+      setCheckedKeys(new Set())
+      rangeAnchorKey.current = null
     }
   }, [folder, activeAccountId])
 
-  useEffect(() => {
-    if (searchTimeout.current) clearTimeout(searchTimeout.current)
-    searchTimeout.current = setTimeout(() => setDebouncedSearch(searchQuery), 400)
-    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current) }
-  }, [searchQuery])
-
-  // Close move menu when clicking outside
-  useEffect(() => {
-    if (!showMoveMenu) return
-    const handler = (e: MouseEvent) => {
-      if (moveMenuRef.current && !moveMenuRef.current.contains(e.target as Node)) setShowMoveMenu(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showMoveMenu])
-
-  // Close snooze menu when clicking outside / Escape
-  useEffect(() => {
-    if (!snoozeFor) return
-    const onDoc = (e: MouseEvent) => {
-      if (snoozeRef.current && !snoozeRef.current.contains(e.target as Node)) setSnoozeFor(null)
-    }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSnoozeFor(null) }
-    document.addEventListener('mousedown', onDoc)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDoc)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [snoozeFor])
 
   const accountParam = activeAccountId ? `&account=${activeAccountId}` : ''
 
   const isSentFolder = /sent/i.test(folder)
 
+  const isSearchMode = isSearchQuery(search)
+
   const { data, error, isValidating, mutate } = useSWR<{ messages: Message[]; total: number }>(
-    debouncedSearch
+    isSearchMode
       ? null
       : `/api/messages?folder=${encodeURIComponent(folder)}&filter=${filter}&page=${page}&perPage=${perPage}${accountParam}`,
     fetcher,
     { refreshInterval: 60000 }
   )
 
-  const { data: searchData, isValidating: isSearching } = useSWR<{ messages: Message[] }>(
-    debouncedSearch && debouncedSearch.length >= 2
-      ? `/api/messages/search?q=${encodeURIComponent(debouncedSearch)}&folder=${encodeURIComponent(folder)}${accountParam}`
+  // `total` = real server-side matches, `fields` = queried fields:
+  // the banner states them rather than retyping them (single source: lib/search.ts).
+  // The "this folder" scope fits in one response: a single folder, nothing to spread out.
+  const isStreamingScope = isSearchMode && searchScope === SCOPE_ALL
+  // The active account arrives AFTER the first render, and in TWO stages: /api/accounts
+  // gives the list, /api/settings says which one is displayed. As long as the settings
+  // are missing, the received account is only a fallback on the DEFAULT mailbox: searching
+  // there would sweep a different mailbox than the displayed one, would open IMAP connections
+  // for nothing, and could briefly show results from the wrong account.
+  // A SINGLE condition holds back both scopes, and the banner stays in its pending
+  // state instead of announcing a definitive "0 results".
+  //
+  // The presence of the settings is NOT enough: a child's effects run BEFORE
+  // the parent's, so the list would see the settings arrive one render before the
+  // parent has applied the account they name. We therefore require AGREEMENT between the two
+  // sources: the displayed account is indeed the one the settings name.
+  const savedAccountId = settingsData?.data?.active_account_id
+  const searchReady = isSearchMode && !!activeAccountId && !!settingsData?.data &&
+    (!savedAccountId || savedAccountId === activeAccountId)
+  const { data: searchData, isValidating: isSearchingOne } = useSWR<{ messages: Message[]; total: number; fields: SearchField[] }>(
+    searchReady && !isStreamingScope
+      ? `/api/messages/search?${SEARCH_PARAM}=${encodeURIComponent(search)}&folder=${encodeURIComponent(folder)}` +
+        `&${SCOPE_PARAM}=${searchScope}${accountParam}`
       : null,
     fetcher
   )
+
+  // The "all folders" scope: the response arrives folder by folder (NDJSON).
+  // Results accumulate as they come, the progress is displayed, and
+  // changing the query aborts the previous one instead of letting it run.
+  const [streamed, setStreamed] = useState<SearchStreamState<Message>>(EMPTY_SEARCH_STREAM)
+  const [streaming, setStreaming] = useState(false)
+  const streamAbort = useRef<AbortController | null>(null)
+  const stopStream = useCallback(() => { streamAbort.current?.abort() }, [])
+
+  useEffect(() => {
+    if (!isStreamingScope || !searchReady) { setStreamed(EMPTY_SEARCH_STREAM); return }
+    const controller = new AbortController()
+    streamAbort.current = controller
+    setStreamed(EMPTY_SEARCH_STREAM)
+    setStreaming(true)
+    const url = `/api/messages/search?${SEARCH_PARAM}=${encodeURIComponent(search)}` +
+      `&folder=${encodeURIComponent(folder)}&${SCOPE_PARAM}=${SCOPE_ALL}&${STREAM_PARAM}=1${accountParam}`
+    // A stream read TO THE END has nothing left to abort: aborting it anyway
+    // on unmount made the browser conclude `net::ERR_ABORTED` on a
+    // response that was nonetheless complete: misleading in the network tools, and
+    // indistinguishable from a real abort.
+    let complete = false
+    ;(async () => {
+      try {
+        const res = await fetch(url, { signal: controller.signal })
+        const body = res.body
+        if (!body) return
+        const reader = body.getReader()
+        const decoder = new TextDecoder()
+        let pending = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const { items, pending: rest } =
+            parseNdjsonChunk<SearchStreamChunk<Message> & { error?: string }>(pending, decoder.decode(value, { stream: true }))
+          pending = rest
+          if (items.length === 0) continue
+          setStreamed(prev => accumulateSearchStream(prev, items))
+        }
+        complete = true
+      } catch {
+        // A deliberate abort is not a failure: the results already
+        // received stay displayed, and the banner simply stops progressing.
+      } finally {
+        // ONLY the CURRENT search clears the flag. An aborted search
+        // finishes AFTER the next one has started: without this test, its `finally`
+        // cleared the progress of the running one: no more Stop button, no more
+        // "N folders out of M", and a "0 results" presented as definitive.
+        if (streamAbort.current === controller) setStreaming(false)
+      }
+    })()
+    return () => { if (!complete) controller.abort() }
+  }, [isStreamingScope, searchReady, search, folder, accountParam])
+
+  // As long as the account is not resolved, the search is STILL starting up:
+  // the banner says "Searching..." rather than asserting a result it does not have.
+  const isSearching = isSearchMode && !searchReady
+    ? true
+    : (isStreamingScope ? streaming : isSearchingOne)
 
   // Folders — needed for the move menu, the context menu AND the row "Archive"
   // quick action, so it is fetched whenever an account is active. The key is
@@ -248,6 +323,27 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
   // No RFC-6154 flag survives /api/folders, so fall back to name/path matching.
   const archivePath = useMemo(
     () => folders.find(f => /archives?\b/i.test(f.name) || /archives?\b/i.test(f.path))?.path ?? null,
+    [folders]
+  )
+  // A result carries its IMAP PATH (e.g. "INBOX.Clients.2026"): the banner displays
+  // the name already known from the folder list, and failing that the last segment:
+  // the separator is server-specific, so it comes from the folder itself.
+  const folderNames = useMemo(() => {
+    const byPath = new Map<string, string>()
+    const walk = (list: Folder[]) => list.forEach(f => {
+      byPath.set(f.path, f.name)
+      if (f.children?.length) walk(f.children)
+    })
+    walk(folders)
+    return byPath
+  }, [folders])
+  const folderLabel = useCallback(
+    (path: string) => folderNames.get(path) ?? path.split(/[/.]/).pop() ?? path,
+    [folderNames]
+  )
+
+  const spamPath = useMemo(
+    () => folders.find(f => /(spam|junk|ind[ée]sirable)/i.test(f.name) || /(spam|junk)/i.test(f.path))?.path ?? null,
     [folders]
   )
 
@@ -264,11 +360,16 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     }
   }, [data, page, refreshKey])
 
-  const isSearchMode = debouncedSearch.length >= 2
-  const messages = isSearchMode ? (searchData?.messages ?? []) : accumulated
+  const searchMessages = isStreamingScope ? streamed.messages : (searchData?.messages ?? [])
+  const messages = isSearchMode ? searchMessages : accumulated
   const total = data?.total ?? 0
+  // The server may have found more than it returns (SEARCH_RESULT_LIMIT cap):
+  // the banner then announces "first X of N" instead of implying N = X.
+  const searchTotal = isStreamingScope ? streamed.total : (searchData?.total ?? messages.length)
+  const searchTruncated = searchTotal > messages.length
+  const showResultFolder = isSearchMode && searchScope === SCOPE_ALL
   const loadError = !isSearchMode && !!error && accumulated.length === 0
-  const loading = isSearchMode ? (!searchData && isSearching) : (!data && !error)
+  const loading = isSearchMode ? (messages.length === 0 && isSearching) : (!data && !error)
 
   // Infinite scroll — a failed page > 1 keeps the list but shows a retry button
   const morePageError = !isSearchMode && !!error && accumulated.length > 0
@@ -342,200 +443,369 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
     return out
   }, [threads, isSearchMode, timeBucket])
 
-  const allVisibleUids = useMemo(() => threads.map(t => t.lastMessage.uid), [threads])
-  const isAllChecked = allVisibleUids.length > 0 && allVisibleUids.every(uid => checkedUids.has(uid))
-  const isIndeterminate = !isAllChecked && allVisibleUids.some(uid => checkedUids.has(uid))
+  /**
+   * The origin of a row: ITS account and ITS folder, not those of the screen. A
+   * "all folders" search returns messages from several folders, and
+   * a uid designates a message only within its own. Missing fields
+   * fall back to the displayed context (outside search, they are identical).
+   */
+  const originOf = useCallback((msg: Message): MessageOrigin => ({
+    accountId: msg.accountId || activeAccountId || '',
+    folder: msg.folder || folder,
+    uid: msg.uid,
+  }), [activeAccountId, folder])
+
+  const allVisibleKeys = useMemo(
+    () => threads.map(t => originKey(originOf(t.lastMessage))),
+    [threads, originOf]
+  )
+  const isAllChecked = allVisibleKeys.length > 0 && allVisibleKeys.every(key => checkedKeys.has(key))
+  const isIndeterminate = !isAllChecked && allVisibleKeys.some(key => checkedKeys.has(key))
 
   const toggleAll = () => {
-    setCheckedUids(isAllChecked ? new Set() : new Set(allVisibleUids))
+    setCheckedKeys(isAllChecked ? new Set() : new Set(allVisibleKeys))
   }
 
-  const toggleUid = (uid: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setCheckedUids(prev => {
+  const toggleChecked = (key: string) => {
+    setCheckedKeys(prev => {
       const next = new Set(prev)
-      if (next.has(uid)) next.delete(uid)
-      else next.add(uid)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
 
-  const clearSelection = () => setCheckedUids(new Set())
+  const toggleRow = (key: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    rangeAnchorKey.current = key
+    toggleChecked(key)
+  }
 
-  const checkedThreadUids = useMemo(() => {
-    const uids: string[] = []
+  /** Shift-click: range from the anchor, in displayed order. Without an anchor, the row alone. */
+  const selectRangeTo = (key: string) => {
+    const anchor = rangeAnchorKey.current
+    const from = anchor ? allVisibleKeys.indexOf(anchor) : -1
+    const to = allVisibleKeys.indexOf(key)
+    if (to < 0) return
+    if (from < 0) {
+      rangeAnchorKey.current = key
+      setCheckedKeys(new Set([key]))
+      return
+    }
+    const [lo, hi] = from <= to ? [from, to] : [to, from]
+    setCheckedKeys(new Set(allVisibleKeys.slice(lo, hi + 1)))
+  }
+
+  const clearSelection = () => {
+    setCheckedKeys(new Set())
+    rangeAnchorKey.current = null
+  }
+
+  /** The checked origins, thread by thread: a checked thread targets all its messages. */
+  const checkedOrigins = useMemo(() => {
+    const origins: MessageOrigin[] = []
     for (const thread of threads) {
-      if (checkedUids.has(thread.lastMessage.uid)) {
-        thread.messages.forEach(m => uids.push(m.uid))
+      if (checkedKeys.has(originKey(originOf(thread.lastMessage)))) {
+        thread.messages.forEach(m => origins.push(originOf(m)))
       }
     }
-    return uids
-  }, [threads, checkedUids])
+    return origins
+  }, [threads, checkedKeys, originOf])
 
-  const getAccountId = useCallback(() => {
-    for (const thread of threads) {
-      if (checkedUids.has(thread.lastMessage.uid)) {
-        return thread.lastMessage.accountId || activeAccountId || ''
-      }
-    }
-    return activeAccountId || ''
-  }, [threads, checkedUids, activeAccountId])
-
-  // Single-message API actions
-  const apiMarkRead = async (uid: string, accountId: string, read: boolean) => {
-    await fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
-      method: 'PATCH',
+  /**
+   * The primitives take the TARGETED ORIGINS: they group by (account,
+   * folder) and send ONE bulk request per group, with ITS folder. The
+   * DISPLAYED folder no longer enters any request: it was what made
+   * actions fire on the wrong messages when a result came from another
+   * folder. The bulk API contract does not change.
+   */
+  const bulkByOrigin = (
+    origins: MessageOrigin[],
+    body: (group: { accountId: string; folder: string; uids: string[] }) => Record<string, unknown>,
+    method: 'PATCH' | 'DELETE' = 'PATCH',
+  ) => Promise.all(groupByOrigin(origins).map(group =>
+    fetch('/api/messages/bulk', {
+      method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isRead: read }),
+      body: JSON.stringify(body(group)),
     })
-    setAccumulated(prev => prev.map(m => m.uid === uid ? { ...m, isRead: read } : m))
-    mutate()
-  }
+  ))
 
-  const apiStar = async (uid: string, accountId: string, starred: boolean) => {
-    await fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isStarred: starred }),
-    })
-    setAccumulated(prev => prev.map(m => m.uid === uid ? { ...m, isStarred: starred } : m))
-  }
+  /** The targeted uids, across all folders: what the display must remove. */
+  const uidsOf = (origins: MessageOrigin[]) => new Set(origins.map(x => x.uid))
 
-  const apiMove = async (uid: string, accountId: string, destination: string) => {
-    await fetch('/api/messages/bulk', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uids: [uid], action: 'move', accountId, folder, destination }),
-    })
-    setAccumulated(prev => prev.filter(m => m.uid !== uid))
-    mutate()
-  }
-
-  const apiDelete = async (uid: string, accountId: string) => {
-    await fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
-      method: 'DELETE',
-    })
-    setAccumulated(prev => prev.filter(m => m.uid !== uid))
-    mutate()
-  }
-
-  // Direction B — row quick actions (top-right corner)
-  const archiveThread = async (thread: ThreadGroup) => {
-    if (!archivePath) return
-    const accId = thread.lastMessage.accountId || activeAccountId || ''
-    const uids = thread.messages.map(m => m.uid)
-    await fetch('/api/messages/bulk', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uids, action: 'move', accountId: accId, folder, destination: archivePath }),
-    })
-    setAccumulated(prev => prev.filter(m => !uids.includes(m.uid)))
-    mutate()
-  }
-
-  const markThreadRead = async (thread: ThreadGroup, read: boolean) => {
-    const accId = thread.lastMessage.accountId || activeAccountId || ''
-    const uids = thread.messages.map(m => m.uid)
-    await fetch('/api/messages/bulk', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uids, action: read ? 'read' : 'unread', accountId: accId, folder }),
-    })
-    setAccumulated(prev => prev.map(m => uids.includes(m.uid) ? { ...m, isRead: read } : m))
+  const markReadUids = async (origins: MessageOrigin[], read: boolean) => {
+    if (!origins.length) return
+    const uids = uidsOf(origins)
+    await bulkByOrigin(origins, g => ({ ...g, action: read ? 'read' : 'unread' }))
+    setAccumulated(prev => prev.map(m => uids.has(m.uid) ? { ...m, isRead: read } : m))
     setReadUids(prev => {
       const next = new Set(prev)
       uids.forEach(u => read ? next.add(u) : next.delete(u))
       return next
     })
+    clearSelection()
     mutate()
   }
 
-  const snoozeThread = async (thread: ThreadGroup, until: Date) => {
-    const msg = thread.lastMessage
-    const accId = msg.accountId || activeAccountId || ''
-    const uids = thread.messages.map(m => m.uid)
-    await fetch(`/api/messages/${msg.uid}/snooze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        until: until.toISOString(),
-        folder,
-        accountId: accId,
-        subject: msg.subject,
-        fromAddress: msg.from.address,
-        fromName: msg.from.name,
-      }),
-    })
-    setSnoozeFor(null)
-    setAccumulated(prev => prev.filter(m => !uids.includes(m.uid)))
+  const deleteUids = async (origins: MessageOrigin[]) => {
+    if (!origins.length) return
+    const uids = uidsOf(origins)
+    await bulkByOrigin(origins, g => g, 'DELETE')
+    setAccumulated(prev => prev.filter(m => !uids.has(m.uid)))
+    clearSelection()
+    mutate()
+  }
+
+  const moveUids = async (origins: MessageOrigin[], destination: string) => {
+    if (!origins.length) return
+    const uids = uidsOf(origins)
+    await bulkByOrigin(origins, g => ({ ...g, action: 'move', destination }))
+    setAccumulated(prev => prev.filter(m => !uids.has(m.uid)))
+    clearSelection()
+    mutate()
+  }
+
+  const setFlagUids = async (origins: MessageOrigin[], flag: string | null) => {
+    if (!origins.length) return
+    const uids = uidsOf(origins)
+    await bulkByOrigin(origins, g => ({ ...g, action: 'flag', destination: undefined, flag }))
+    setAccumulated(prev => prev.map(m => uids.has(m.uid) ? { ...m, flag, isStarred: flag !== null, isFlagged: flag !== null } : m))
+    mutate()
+  }
+
+  /**
+   * Snoozes the targeted uids. The snooze is set message by message (the route
+   * carries the uid in its path); the rows disappear all at once, as
+   * for a move, and the bar's popover refreshes.
+   */
+  const snoozeUids = async (origins: MessageOrigin[], until: Date) => {
+    if (!origins.length) return
+    const uids = uidsOf(origins)
+    const byKey = new Map(accumulated.map(m => [originKey(originOf(m)), m]))
+    await Promise.all(origins.map(origin => {
+      const msg = byKey.get(originKey(origin))
+      return fetch(`/api/messages/${origin.uid}/snooze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          until: until.toISOString(),
+          folder: origin.folder,
+          accountId: origin.accountId,
+          subject: msg?.subject,
+          fromAddress: msg?.from.address,
+          fromName: msg?.from.name,
+        }),
+      })
+    }))
+    setAccumulated(prev => prev.filter(m => !uids.has(m.uid)))
+    clearSelection()
     mutate()
     window.dispatchEvent(new CustomEvent('synapmail:snooze-changed'))
   }
 
-  const bulkMarkRead = async (read: boolean) => {
-    const accId = getAccountId()
-    await fetch('/api/messages/bulk', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uids: checkedThreadUids, action: read ? 'read' : 'unread', accountId: accId, folder }),
-    })
-    setAccumulated(prev => prev.map(m => checkedThreadUids.includes(m.uid) ? { ...m, isRead: read } : m))
-    clearSelection()
-    mutate()
-  }
-
-  const bulkDelete = async () => {
-    const accId = getAccountId()
-    await fetch('/api/messages/bulk', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uids: checkedThreadUids, accountId: accId, folder }),
-    })
-    setAccumulated(prev => prev.filter(m => !checkedThreadUids.includes(m.uid)))
-    clearSelection()
-    mutate()
-  }
-
-  const bulkMove = async (destination: string) => {
-    const accId = getAccountId()
-    await fetch('/api/messages/bulk', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uids: checkedThreadUids, action: 'move', accountId: accId, folder, destination }),
-    })
-    setAccumulated(prev => prev.filter(m => !checkedThreadUids.includes(m.uid)))
-    clearSelection()
-    setShowMoveMenu(false)
-    mutate()
-  }
-
   // Drag handlers
   const handleDragStart = useCallback((e: React.DragEvent, thread: ThreadGroup) => {
+    // Direction arbitration: a mostly VERTICAL gesture from a
+    // row is a marquee selection, not a drag toward a folder.
+    const pending = marqueeRef.current
+    if (pending && !pending.armed) {
+      // The direction is read from the pointer trail, not from the coordinates of
+      // the drag event: those are not reliable from one engine to another.
+      if (Math.abs(pending.lastY - pending.startY) >= Math.abs(pending.lastX - pending.startX)) {
+        e.preventDefault()
+        pending.armed = true
+        return
+      }
+      marqueeRef.current = null
+    }
     const msg = thread.lastMessage
-    const accId = msg.accountId || activeAccountId || ''
-    const uidsToMove = checkedUids.has(msg.uid) ? checkedThreadUids : thread.messages.map(m => m.uid)
-    e.dataTransfer.setData('application/synapmail', JSON.stringify({
-      uids: uidsToMove,
-      accountId: accId,
-      folder,
-    }))
+    const dragged = checkedKeys.has(originKey(originOf(msg)))
+      ? checkedOrigins
+      : thread.messages.map(originOf)
+    const groups = groupByOrigin(dragged)
+    // The drop target (sidebar) moves ONE group: `{ uids, accountId, folder }`.
+    // A selection mixing several folders has no single folder to
+    // announce: dragging it would move part of it with the wrong folder.
+    // We therefore refuse the gesture rather than act on wrong messages.
+    // ponytail: refusal, not a second protocol. The day the drop target can read
+    // several groups, it will be enough to pass them to it here.
+    if (groups.length !== 1) { e.preventDefault(); return }
+    e.dataTransfer.setData('application/synapmail', JSON.stringify(groups[0]))
     e.dataTransfer.effectAllowed = 'move'
     setDraggingUid(msg.uid)
-  }, [checkedUids, checkedThreadUids, activeAccountId, folder])
+  }, [checkedKeys, checkedOrigins, originOf])
 
   const handleDragEnd = useCallback(() => setDraggingUid(null), [])
 
-  const handleSelectThread = (thread: ThreadGroup) => {
-    if (checkedUids.size > 0) {
-      const uid = thread.lastMessage.uid
-      setCheckedUids(prev => {
-        const next = new Set(prev)
-        if (next.has(uid)) next.delete(uid)
-        else next.add(uid)
-        return next
-      })
+  /**
+   * Mouse marquee selection.
+   *
+   * The rows are `draggable` and take the full width: there is no
+   * empty space to start a rectangle in. The gesture direction therefore decides, at
+   * `dragstart`: mostly VERTICAL (|dy| >= |dx|) → the native drag is cancelled
+   * and the rectangle begins; mostly HORIZONTAL → we head toward the
+   * sidebar, drag-and-drop stays what it was. A press outside a row
+   * (date header, bottom margin) has no native drag to arbitrate: the
+   * rectangle starts as soon as the pointer has moved.
+   *
+   * Everything goes through the M1 selection: the toolbar and the right click
+   * see the result without one extra line of code.
+   */
+
+  /** Selects the rows the rectangle INTERSECTS, in screen coordinates. */
+  const selectIntersecting = useCallback((top: number, bottom: number) => {
+    const state = marqueeRef.current
+    if (!state) return
+    const hit: string[] = []
+    document.querySelectorAll<HTMLElement>(`[${MAIL_ORIGIN_ATTR}]`).forEach(el => {
+      const r = el.getBoundingClientRect()
+      if (r.bottom >= top && r.top <= bottom) {
+        const key = el.getAttribute(MAIL_ORIGIN_ATTR)
+        if (key) hit.push(key)
+      }
+    })
+    if (!state.additive) { setCheckedKeys(new Set(hit)); return }
+    const next = new Set(state.before)
+    hit.forEach(key => next.add(key))
+    setCheckedKeys(next)
+  }, [])
+
+  // A rectangle released on a row is followed by a `click`: without this flag,
+  // it would open the message and clear the selection just drawn.
+  const marqueeDrewRef = useRef(false)
+
+  const endMarquee = useCallback((restore: boolean) => {
+    const state = marqueeRef.current
+    if (!state) return
+    marqueeRef.current = null
+    if (state.drew) marqueeDrewRef.current = true
+    setMarquee(null)
+    if (restore) setCheckedKeys(new Set(state.before))
+  }, [])
+
+  const beginMarquee = useCallback((e: React.MouseEvent) => {
+    // Left button only: the right click opens the menu, the middle one is none of our business.
+    if (e.button !== 0) return
+    // A rectangle drawn from one row to ANOTHER produces no `click` (the
+    // two ends do not have the same element): the flag cannot
+    // rely on a click to clear itself, the next press is what does it.
+    marqueeDrewRef.current = false
+    const box = scrollRef.current
+    if (!box) return
+    const target = e.target as HTMLElement | null
+    // The avatar already carries the checkbox: a press on it is not a rectangle.
+    if (target?.closest('.group\\/avatar')) return
+    marqueeRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      startScroll: box.scrollTop,
+      additive: e.metaKey || e.ctrlKey || e.shiftKey,
+      before: new Set(checkedKeys),
+      drew: false,
+      // On a row, the rectangle waits for the `dragstart` arbitration; elsewhere,
+      // there is nothing to arbitrate.
+      armed: !target?.closest('[data-mail-row]'),
+    }
+  }, [checkedKeys])
+
+  /**
+   * The gesture lives on the WINDOW, not on the container: the pointer leaves the
+   * list without the rectangle freezing, and a release outside ends it.
+   * A single set of listeners, installed once: it bails out immediately when no
+   * gesture is in progress.
+   */
+  useEffect(() => {
+    let pointer: { x: number; y: number } | null = null
+    let scroller: ReturnType<typeof setInterval> | null = null
+
+    const stopScroller = () => {
+      if (scroller) { clearInterval(scroller); scroller = null }
+    }
+
+    /** Redraws and re-selects from the last known position. */
+    const paint = () => {
+      const state = marqueeRef.current
+      const box = scrollRef.current
+      if (!state || !box || !pointer) return
+      const r = box.getBoundingClientRect()
+      const anchorY = state.startY - r.top + state.startScroll
+      const nowY = pointer.y - r.top + box.scrollTop
+      const anchorX = state.startX - r.left
+      const nowX = pointer.x - r.left
+      const top = Math.min(anchorY, nowY)
+      const height = Math.abs(nowY - anchorY)
+      setMarquee({ left: Math.min(anchorX, nowX), top, width: Math.abs(nowX - anchorX), height })
+      selectIntersecting(top - box.scrollTop + r.top, top + height - box.scrollTop + r.top)
+    }
+
+    const onMove = (e: MouseEvent) => {
+      const state = marqueeRef.current
+      const box = scrollRef.current
+      if (!state || !box) return
+      pointer = { x: e.clientX, y: e.clientY }
+      state.lastX = e.clientX
+      state.lastY = e.clientY
+      // On a row, the rectangle is armed only once the native drag has been ruled out.
+      if (!state.armed) return
+      if (Math.abs(e.clientX - state.startX) < MARQUEE_MIN_PX && Math.abs(e.clientY - state.startY) < MARQUEE_MIN_PX) return
+      // The rectangle replaces the text selection the browser would make.
+      e.preventDefault()
+      state.drew = true
+      paint()
+      const r = box.getBoundingClientRect()
+      const step = e.clientY < r.top + MARQUEE_EDGE_PX ? -MARQUEE_SCROLL_PX
+        : e.clientY > r.bottom - MARQUEE_EDGE_PX ? MARQUEE_SCROLL_PX
+        : 0
+      stopScroller()
+      if (step !== 0) scroller = setInterval(() => { box.scrollTop += step; paint() }, MARQUEE_SCROLL_MS)
+    }
+
+    const onUp = () => { stopScroller(); endMarquee(false) }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && marqueeRef.current) { stopScroller(); endMarquee(true) }
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      stopScroller()
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [selectIntersecting, endMarquee])
+
+  /**
+   * Click on a row, file-explorer style: Cmd/Ctrl toggles the row, Shift
+   * extends the range from the last clicked row, a plain click CLEARS the
+   * selection and opens that row: even while a selection is in progress
+   * (otherwise a right click, which selects, would make the list unopenable).
+   * The checkbox on avatar hover (`toggleRow`) remains the path that accumulates.
+   */
+  const handleRowClick = (thread: ThreadGroup, e: React.MouseEvent) => {
+    if (marqueeDrewRef.current) { marqueeDrewRef.current = false; return }
+    const key = originKey(originOf(thread.lastMessage))
+    if (e.metaKey || e.ctrlKey) {
+      toggleChecked(key)
+      rangeAnchorKey.current = key
       return
     }
+    if (e.shiftKey) {
+      selectRangeTo(key)
+      return
+    }
+    // The anchor is set AFTER the opening: `handleSelectThread` clears the
+    // selection, which erases the anchor: a later Shift-click must start from here.
+    handleSelectThread(thread)
+    rangeAnchorKey.current = key
+  }
+
+  const handleSelectThread = (thread: ThreadGroup) => {
+    if (checkedKeys.size > 0) clearSelection()
     setSelectedThreadKey(thread.key)
     thread.messages.forEach(msg => {
       if (!msg.isRead && !readUids.has(msg.uid)) {
@@ -543,48 +813,159 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
       }
     })
     if (thread.count === 1) {
-      onSelect(thread.lastMessage.uid, thread.lastMessage.accountId)
+      onSelect(originOf(thread.lastMessage))
     } else {
       onSelectThread(thread.messages, thread.subject)
     }
   }
 
+  /**
+   * Right click, file-explorer style: INSIDE the selection it keeps it whole (the
+   * menu acts on everything); outside it, it selects that row alone first,
+   * so that the targeted item is always the one seen highlighted.
+   */
   const handleContextMenu = (e: React.MouseEvent, thread: ThreadGroup) => {
     e.preventDefault()
     const msg = thread.lastMessage
+    const key = originKey(originOf(msg))
+    if (!checkedKeys.has(key)) {
+      setCheckedKeys(new Set([key]))
+      rangeAnchorKey.current = key
+    }
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
-      uid: msg.uid,
-      accountId: msg.accountId || activeAccountId || '',
       isRead: msg.isRead || readUids.has(msg.uid),
-      isStarred: msg.isStarred,
-      folderPath: folder,
+      flag: msg.flag ?? (msg.isStarred ? DEFAULT_FLAG_KEY : null),
+      // "Move to" removes the row's ORIGIN folder, not the screen's.
+      folderPath: originOf(msg).folder,
     })
   }
 
   const handleRefresh = () => { setPage(1); loadingLockRef.current = 0; setRefreshKey(k => k + 1); mutate() }
-  const clearSearch = () => { setSearchQuery(''); setDebouncedSearch('') }
-  const hasSelection = checkedUids.size > 0
+  const hasSelection = checkedKeys.size > 0
+
+  /**
+   * Target of the shared actions: the selection if it exists, otherwise the OPEN
+   * message. A single place decides: the context capabilities follow the same
+   * rule (`targetCount`), so an enabled button always has something to target.
+   */
+  const targetOrigins = useMemo(
+    () => (checkedOrigins.length ? checkedOrigins : selectedOrigin ? [selectedOrigin] : []),
+    [checkedOrigins, selectedOrigin]
+  )
+  const targetOriginsRef = useRef(targetOrigins)
+  targetOriginsRef.current = targetOrigins
+
+  // The list primitives change identity on every render: a
+  // ref makes them callable without re-registering the whole registry.
+  const moveUidsRef = useRef(moveUids)
+  moveUidsRef.current = moveUids
+  const deleteUidsRef = useRef(deleteUids)
+  deleteUidsRef.current = deleteUids
+  const markReadUidsRef = useRef(markReadUids)
+  markReadUidsRef.current = markReadUids
+  const setFlagUidsRef = useRef(setFlagUids)
+  setFlagUidsRef.current = setFlagUids
+  const snoozeUidsRef = useRef(snoozeUids)
+  snoozeUidsRef.current = snoozeUids
+
+  const handleRefreshRef = useRef(handleRefresh)
+  handleRefreshRef.current = handleRefresh
+
+
+  const moveTarget = useCallback((destination: string) => {
+    if (!destination) return
+    moveUidsRef.current(targetOriginsRef.current, destination)
+  }, [])
+
+  const deleteTarget = useCallback(() => {
+    const origins = targetOriginsRef.current
+    if (origins.length > 1 && !window.confirm(t('confirmDeleteSelection', { count: origins.length }))) return
+    deleteUidsRef.current(origins)
+  }, [t])
+
+  // Publishes what a toolbar needs to know, and withdraws the publication when
+  // leaving the mailbox (the provider then falls back to an empty state).
+  useEffect(() => {
+    publish({
+      accountId: activeAccountId ?? null,
+      folder,
+      selected: checkedOrigins,
+      open: selectedOrigin,
+      canSend: perms.canSend,
+      canDelete: perms.canDelete,
+      canOrganize: perms.canOrganize,
+      hasArchive: !!archivePath,
+      hasSpam: !!spamPath,
+    })
+    return () => publish(null)
+  }, [publish, activeAccountId, folder, checkedOrigins, selectedOrigin, perms.canSend, perms.canDelete, perms.canOrganize, archivePath, spamPath])
+
+  useEffect(() => {
+    register({
+      refresh: () => handleRefreshRef.current(),
+      archive: () => { if (archivePath) moveTarget(archivePath) },
+      spam: () => { if (spamPath) moveTarget(spamPath) },
+      remove: deleteTarget,
+      markRead: () => markReadUidsRef.current(targetOriginsRef.current, true),
+      markUnread: () => markReadUidsRef.current(targetOriginsRef.current, false),
+      setFlag: (flag) => setFlagUidsRef.current(targetOriginsRef.current, flag),
+      snooze: (until) => snoozeUidsRef.current(targetOriginsRef.current, until),
+      moveTo: moveTarget,
+    })
+  }, [register, archivePath, spamPath, moveTarget, deleteTarget])
+
+  // List keyboard: Cmd/Ctrl+A selects everything loaded, Escape clears,
+  // Delete deletes the selection (confirmation beyond one message).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        if (allVisibleKeys.length === 0) return
+        e.preventDefault()
+        setCheckedKeys(new Set(allVisibleKeys))
+        return
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === 'Escape' && checkedKeys.size > 0) { e.preventDefault(); clearSelection(); return }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && checkedKeys.size > 0 && perms.canDelete) {
+        e.preventDefault()
+        deleteTarget()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [allVisibleKeys, checkedKeys, perms.canDelete, deleteTarget]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderRow = (thread: ThreadGroup) => {
     const { lastMessage: msg, hasUnread, count } = thread
     const isRead = !hasUnread || readUids.has(msg.uid)
     const isSelected = selectedThreadKey === thread.key
-    const isChecked = checkedUids.has(msg.uid)
+    const rowOrigin = originOf(msg)
+    const rowKey = originKey(rowOrigin)
+    const isChecked = checkedKeys.has(rowKey)
     const isDragging = draggingUid === msg.uid
     const initial = (msg.from.name || msg.from.address)[0]?.toUpperCase() ?? '?'
     const avatarColor = isRead ? 'bg-muted text-muted-foreground' : cn(getAvatarColor(msg.from.address), 'text-white')
 
     return (
       <div
-        key={thread.key}
+        key={rowKey}
+        data-mail-row={msg.uid}
+        {...{ [MAIL_ORIGIN_ATTR]: rowKey }}
+        role="option"
+        // Selected = checked OR open: what the eye sees highlighted is what
+        // the screen reader announces, and it is what the actions target.
+        aria-selected={isChecked || isSelected}
+        tabIndex={-1}
         draggable={perms.canOrganize}
         onDragStart={e => handleDragStart(e, thread)}
         onDragEnd={handleDragEnd}
         onContextMenu={e => handleContextMenu(e, thread)}
         className={cn(
-          'group/row relative w-full text-left grid grid-cols-[auto_1fr] gap-3 border-b border-border/40 transition-colors duration-150 border-l-[3px] cursor-pointer select-none',
+          'group/row relative w-full text-left grid grid-cols-[auto_1fr] gap-3 border-b border-border/40 transition-colors duration-150 border-l-[3px] cursor-pointer',
           compact ? 'px-3 py-2' : 'px-4 py-3',
           isDragging && 'opacity-40',
           isChecked ? 'bg-primary/10 border-l-primary'
@@ -592,12 +973,12 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
             : !isRead ? 'border-l-primary hover:bg-muted/50 bg-blue-50/60 dark:bg-blue-950/20'
             : 'border-l-transparent hover:bg-muted/50'
         )}
-        onClick={() => handleSelectThread(thread)}
+        onClick={e => handleRowClick(thread, e)}
       >
         {/* Avatar / Checkbox */}
         <div
           className={cn('relative shrink-0 group/avatar', compact ? 'w-7 h-7' : 'w-9 h-9')}
-          onClick={e => toggleUid(msg.uid, e)}
+          onClick={e => toggleRow(rowKey, e)}
         >
           {isChecked ? (
             <div className="w-full h-full rounded-full flex items-center justify-center bg-primary/10 text-primary">
@@ -625,15 +1006,31 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
         </div>
 
         <div className="min-w-0">
-          {/* line 1 — sender + date, right padding reserves the corner-action strip */}
-          <div className={cn('flex items-baseline justify-between gap-2', archivePath ? 'pr-[104px]' : 'pr-[80px]', compact ? '' : 'mb-0.5')}>
+          {/* line 1 — sender (truncates first) + full date and time */}
+          <div className={cn('flex items-baseline justify-between gap-2', compact ? '' : 'mb-0.5')}>
             <span className={cn('text-sm truncate', !isRead ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground')}>
               {count > 1
                 ? thread.messages.map(m => m.from.name || m.from.address.split('@')[0]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 3).join(', ')
                 : (msg.from.name || msg.from.address)
               }
             </span>
+            {/* The "all folders" scope: a result says nothing if it does not say
+                where it comes from. Discreet, and only when the folder can vary. */}
+            {showResultFolder && msg.folder && (
+              <span className="shrink-0 max-w-[40%] truncate text-[11px] text-muted-foreground/70" data-result-folder>
+                {folderLabel(msg.folder)}
+              </span>
+            )}
             <div className="flex items-center gap-1 shrink-0">
+              {(() => {
+                const flag = flagByKey(msg.flag ?? (msg.isStarred ? DEFAULT_FLAG_KEY : null))
+                if (!flag) return null
+                return (
+                  <span title={t(`flags.${flag.labelKey}`)}>
+                    <Flag className="w-3 h-3 fill-current" style={{ color: flag.color }} />
+                  </span>
+                )
+              })()}
               {thread.messages.some(m => m.hasAttachments) && <Paperclip className="w-3 h-3 text-muted-foreground" />}
               {isSentFolder && (() => {
                 const receipt = trackingMap[msg.subject]
@@ -647,7 +1044,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
                 )
               })()}
               <span className={cn('text-xs tabular-nums', !isRead ? 'text-primary font-medium' : 'text-muted-foreground')}>
-                {formatDate(msg.date)}
+                {formatRowDate(msg.date, locale, t('grpToday'))}
               </span>
             </div>
           </div>
@@ -665,95 +1062,24 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
           )}
         </div>
 
-        {/* corner actions — always visible, out of the text flow */}
-        <div className="absolute top-1.5 right-2 flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-          {archivePath && perms.canOrganize && (
-            <button
-              onClick={() => archiveThread(thread)}
-              title={t('archiveAction')}
-              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <Archive className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {perms.canOrganize && (
-            <button
-              onClick={() => markThreadRead(thread, !isRead)}
-              title={isRead ? t('markUnread') : t('markDone')}
-              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              {isRead ? <Mail className="w-3.5 h-3.5" /> : <MailOpen className="w-3.5 h-3.5" />}
-            </button>
-          )}
-          {perms.canDelete && (
-            <button
-              onClick={() => apiDelete(msg.uid, msg.accountId || activeAccountId || '')}
-              title={t('delete')}
-              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {perms.canOrganize && (
-            <div className="relative" ref={snoozeFor === thread.key ? snoozeRef : undefined}>
-              <button
-                onClick={() => setSnoozeFor(snoozeFor === thread.key ? null : thread.key)}
-                title={t('snooze')}
-                className={cn(
-                  'w-6 h-6 flex items-center justify-center rounded transition-colors',
-                  snoozeFor === thread.key ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-                )}
-              >
-                <Clock className="w-3.5 h-3.5" />
-              </button>
-              {snoozeFor === thread.key && (
-                <div className="absolute right-0 top-7 z-50 w-44 bg-popover border border-border rounded-lg shadow-xl py-1">
-                  {snoozePresets().map(p => (
-                    <button
-                      key={p.key}
-                      onClick={() => snoozeThread(thread, p.date)}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
-                    >
-                      <span>{t(p.key)}</span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {p.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full bg-background border-r border-border">
-      {/* Search bar */}
-      <div className="px-3 pt-3 pb-2 shrink-0">
-        <div className="relative flex items-center">
-          <Search className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-          <input
-            ref={effectiveSearchRef}
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Rechercher…"
-            className="w-full h-8 pl-8 pr-8 text-xs rounded-lg border border-border bg-muted/50 placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          {searchQuery && (
-            <button onClick={clearSearch} className="absolute right-2 text-muted-foreground hover:text-foreground">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Toolbar */}
-      {hasSelection ? (
-        <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-border shrink-0 bg-primary/5">
+    <div className="flex flex-col h-full bg-background border-r border-border" {...{ [MAIL_SELECTION_COUNT_ATTR]: checkedOrigins.length }}>
+      {/*
+        Toolbar. Its three states do not have the same height (in a narrow column
+        the normal header wraps onto two lines). If the selection bar
+        REPLACED the header, the whole list would shift up as soon as the first row is
+        checked, and a marquee selection would no longer intersect the targeted rows
+        under the pointer. Both therefore live in the SAME grid cell: the
+        height is that of the tallest, the same with and without a selection, with no
+        hard-coded height and no JS measurement. `invisible` also removes from the tab
+        order whatever is not displayed.
+      */}
+      <div className="grid shrink-0">
+        <div className={cn('col-start-1 row-start-1 flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-border bg-primary/5', !hasSelection && 'invisible')} aria-hidden={!hasSelection || undefined}>
           <button
             onClick={toggleAll}
             className="w-7 h-7 flex items-center justify-center rounded text-primary hover:bg-primary/10 transition-colors"
@@ -766,46 +1092,17 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
                 : <CheckSquare className="w-4 h-4" />
             }
           </button>
-          <span className="text-xs text-primary font-medium mr-1">{checkedUids.size}</span>
-          {perms.canOrganize && (
-            <>
-              <button onClick={() => bulkMarkRead(true)} title={t('markRead')} className="ml-auto w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-                <MailOpen className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={() => bulkMarkRead(false)} title={t('markUnread')} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-                <Mail className="w-3.5 h-3.5" />
-              </button>
-              <div className="relative" ref={moveMenuRef}>
-                <button onClick={() => setShowMoveMenu(v => !v)} title={t('move')} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-                  <MoveRight className="w-3.5 h-3.5" />
-                  <ChevronDown className="w-2.5 h-2.5 -ml-0.5" />
-                </button>
-                {showMoveMenu && (
-                  <div className="absolute right-0 top-8 z-50 min-w-[180px] max-h-64 overflow-y-auto bg-popover border border-border rounded-lg shadow-lg py-1">
-                    {!foldersResponse && <p className="px-3 py-2 text-xs text-muted-foreground">Chargement…</p>}
-                    {folders.map(f => (
-                      <button key={f.path} onClick={() => bulkMove(f.path)} className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors truncate">
-                        {f.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-          {perms.canDelete && (
-            <button onClick={bulkDelete} title={t('delete')} className={cn('w-7 h-7 flex items-center justify-center rounded text-destructive hover:bg-destructive/10 transition-colors', !perms.canOrganize && 'ml-auto')}>
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <span className="text-xs text-primary font-medium mr-1">{checkedKeys.size}</span>
+          <div className="flex-1" />
           <button onClick={clearSelection} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Annuler la sélection">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-      ) : !isSearchMode ? (
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+        <div className={cn('col-start-1 row-start-1', hasSelection && 'invisible')} aria-hidden={hasSelection || undefined}>
+        {!isSearchMode ? (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border h-full">
           <div className="flex rounded-lg overflow-hidden border border-border text-xs font-medium">
-            {(['all', 'unread'] as const).map(f => (
+            {MAIL_LIST_FILTERS.map(f => (
               <button key={f} onClick={() => { setFilter(f); setPage(1); setAccumulated([]); loadingLockRef.current = 0 }}
                 className={cn('px-3 py-1.5 transition-colors', filter === f ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent')}>
                 {t(f)}
@@ -821,22 +1118,80 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
               </button>
             ))}
           </div>
-          <button onClick={handleRefresh} disabled={isValidating} className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-            <RefreshCw className={cn('w-3.5 h-3.5', isValidating && 'animate-spin')} />
-          </button>
+          <div className="ml-auto" />
           <ScheduledPopover />
           <SnoozePopover activeAccountId={activeAccountId} />
         </div>
-      ) : (
-        <div className="px-4 py-2 border-b border-border shrink-0">
-          <p className="text-xs text-muted-foreground">
-            {isSearching ? 'Recherche…' : `${messages.length} résultat${messages.length !== 1 ? 's' : ''} pour « ${debouncedSearch} »`}
-          </p>
+        ) : (
+        <div className="px-4 py-2 border-b border-border h-full">
+          {/* ONE line: the count, what is displayed, and the progress while it
+              runs. The searched fields and the scope (secondary information)
+              move into a tooltip on the right-hand icon. */}
+          <div className="flex items-center gap-2 min-w-0">
+            <p className="text-xs text-muted-foreground truncate" data-search-summary>
+              {t('searchCount', { count: searchTotal })}
+              {searchTruncated && ` · ${t('searchShown', { shown: messages.length })}`}
+              {isSearching && streamed.folders > 0 &&
+                ` · ${t('searchProgress', { searched: streamed.searched, folders: streamed.folders })}`}
+              {isSearching && streamed.folders === 0 && ` · ${t('searching')}`}
+            </p>
+            {/* Gated on `streaming` and not on `isSearching`: before the account
+                is resolved, no stream is running yet: a Stop button would have
+                nothing to stop. */}
+            {streaming && isStreamingScope && (
+              <button
+                onClick={stopStream}
+                className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {t('searchStop')}
+              </button>
+            )}
+            {/* `IconTooltip` and not the native `title` attribute: a single tooltip, in the
+                app's style, placed under the icon. `align="end"`: the icon is flush against the
+                right edge of the list, a centered tooltip would overflow it. */}
+            <span className="ml-auto flex shrink-0 text-muted-foreground/60">
+              <IconTooltip
+                align="end"
+                label={t('searchDetails', {
+                  fields: t('searchFieldsLabel'),
+                  scope: searchScope === SCOPE_ALL ? t('searchAllFolders') : t('searchThisFolder'),
+                })}
+              >
+                <Info className="w-3.5 h-3.5" data-search-details />
+              </IconTooltip>
+            </span>
+          </div>
+          {!isSearching && messages.length === 0 && (
+            <p className="mt-1 text-xs text-muted-foreground/70" data-search-hint>{t('searchNoBodyHint')}</p>
+          )}
         </div>
-      )}
+        )}
+        </div>
+      </div>
 
       {/* Thread List */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      {/* `select-none`: a rectangle starting on a date header used to highlight
+          text along the way: text selection is born at `mousedown`, which no
+          `preventDefault()` placed at `mousemove` can cancel anymore. The list has
+          no text to copy; elsewhere (reading pane) nothing changes. */}
+      <ThinScroll
+        className="flex-1"
+        viewportClassName="relative select-none"
+        viewportRef={scrollRef}
+        viewportProps={{
+          role: 'listbox',
+          'aria-multiselectable': true,
+          'aria-label': t('messageList'),
+          onMouseDown: beginMarquee,
+        }}
+      >
+        {marquee && (
+          <div
+            data-mail-marquee
+            className="pointer-events-none absolute z-20 border border-primary bg-primary/10"
+            style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
+          />
+        )}
         {loading && (
           <div className="space-y-0">
             {[...Array(8)].map((_, i) => (
@@ -873,14 +1228,14 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
             <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
               <Search className="w-6 h-6 opacity-30" />
             </div>
-            <p className="text-sm font-medium">{isSearchMode ? 'Aucun résultat' : t('noMessages')}</p>
+            <p className="text-sm font-medium">{isSearchMode ? t('noSearchResults') : t('noMessages')}</p>
           </div>
         )}
 
         {groupedThreads.map((group, gi) => (
           <div key={group.label ?? `g${gi}`}>
             {group.label && (
-              <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border/40">
+              <div data-mail-date-header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border/40">
                 {group.label}
               </div>
             )}
@@ -918,7 +1273,7 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
             </div>
           )
         )}
-      </div>
+      </ThinScroll>
 
       {/* Context menu */}
       {contextMenu && (
@@ -926,10 +1281,6 @@ export function MessageList({ folder, onSelect, onSelectThread, activeAccountId,
           menu={contextMenu}
           folders={folders}
           onClose={() => setContextMenu(null)}
-          onMarkRead={apiMarkRead}
-          onStar={apiStar}
-          onMove={apiMove}
-          onDelete={apiDelete}
         />
       )}
     </div>

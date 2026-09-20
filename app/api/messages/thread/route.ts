@@ -3,12 +3,13 @@ import { authenticate } from '@/lib/apiAuth'
 import { query } from '@/lib/db'
 import { getAccessibleAccount } from '@/lib/accountAccess'
 import { searchMessages } from '@/lib/imap'
+import { guardApiPayload, isMachineRequest } from '@/lib/promptGuard'
 
 export const dynamic = 'force-dynamic'
 
 type AccountRow = {
   id: string; imap_host: string; imap_port: number; imap_secure: boolean;
-  username: string; password_encrypted: string;
+  username: string; password_encrypted: string; prompt_guard: boolean;
   oauth_provider: string | null; oauth_access_token: string | null;
   oauth_refresh_token: string | null; oauth_expires_at: number | null;
 }
@@ -80,9 +81,9 @@ export async function GET(req: Request) {
     // Sort oldest first
     filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    return NextResponse.json({
+    return NextResponse.json(guardApiPayload({
       messages: filtered.map(m => ({ ...m, accountId: account.id }))
-    })
+    }, { enabled: isMachineRequest(req) && account.prompt_guard }))
   } catch (err) {
     return NextResponse.json({ error: String(err), messages: [] }, { status: 500 })
   }

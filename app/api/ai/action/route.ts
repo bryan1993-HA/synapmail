@@ -1,50 +1,15 @@
-import { auth } from '@/lib/auth'
+import { authenticate } from '@/lib/apiAuth'
 import { query } from '@/lib/db'
-import { callAI, AIProvider, AISettings } from '@/lib/ai'
+import {
+  callAI, buildMessages, isLoopbackUrl,
+  AIAction, AIProvider, AISettings, LOCAL_PROVIDER,
+} from '@/lib/ai'
 import { NextRequest, NextResponse } from 'next/server'
-import { htmlToText } from '@/lib/html'
-
-type AIAction = 'summarize' | 'reply' | 'improve' | 'tone' | 'translate'
-
-function buildPrompt(action: AIAction, content: string, options: { tone?: string; targetLang?: string; context?: string }): string {
-  // Strip HTML fully (style/script/head blocks + all tags + entity decoding)
-  const plain = htmlToText(content)
-
-  switch (action) {
-    case 'summarize':
-      return `Résume cet email en 3 points clés maximum. Utilise des bullet points (• ). Sois très concis.\n\nEmail :\n${plain}`
-
-    case 'reply':
-      return `Rédige une réponse professionnelle et courtoise à cet email${options.context ? ` (contexte : ${options.context})` : ''}. Donne uniquement le corps de la réponse, sans "Bonjour" ni formule de clôture.\n\nEmail original :\n${plain}`
-
-    case 'improve':
-      return `Améliore cet email : corrige les fautes, améliore le style et la clarté. Réponds uniquement avec le texte amélioré, sans explication.\n\nEmail :\n${plain}`
-
-    case 'tone':
-      const toneMap: Record<string, string> = {
-        formal: 'formel et professionnel',
-        casual: 'décontracté et amical',
-        assertive: 'assertif et direct',
-        concise: 'très concis (supprime tout ce qui est superflu)',
-        empathetic: 'empathique et bienveillant',
-      }
-      const toneLabel = toneMap[options.tone ?? 'formal'] ?? 'formel et professionnel'
-      return `Réécris cet email dans un ton ${toneLabel}. Réponds uniquement avec le texte réécrit.\n\nEmail :\n${plain}`
-
-    case 'translate':
-      if (options.targetLang === 'en') {
-        return `Translate this email to English. Reply only with the translated text.\n\nEmail:\n${plain}`
-      }
-      return `Traduis cet email en français. Réponds uniquement avec le texte traduit.\n\nEmail :\n${plain}`
-
-    default:
-      throw new Error(`Unknown action: ${action}`)
-  }
-}
+import { promptGuardApplies } from '@/lib/accounts'
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await authenticate(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json() as {
     action: AIAction
@@ -52,9 +17,10 @@ export async function POST(req: NextRequest) {
     context?: string
     tone?: string
     targetLang?: string
+    accountId?: string
   }
 
-  const { action, content, context, tone, targetLang } = body
+  const { action, content, context, tone, targetLang, accountId } = body
 
   if (!content?.trim()) return NextResponse.json({ error: 'Missing content' }, { status: 400 })
 
@@ -67,7 +33,7 @@ export async function POST(req: NextRequest) {
   }>(
     `SELECT provider, api_key_encrypted, base_url, model, system_prompt
      FROM ai_settings WHERE user_id = $1`,
-    [session.user.id]
+    [user.id]
   )
 
   if (!rows[0]) {
@@ -83,9 +49,32 @@ export async function POST(req: NextRequest) {
     systemPrompt: row.system_prompt,
   }
 
+  // The mailbox the content belongs to decides — see lib/accounts.ts.
+  const promptGuard = await promptGuardApplies(user.id, accountId)
+
   try {
-    const prompt = buildPrompt(action, content, { tone, targetLang, context })
-    const result = await callAI(settings, [{ role: 'user', content: prompt }])
+    const messages = buildMessages(
+      action,
+      content,
+      { tone, targetLang, context, promptGuard },
+      settings.systemPrompt
+    )
+
+    // A model on the user's machine is unreachable from here by definition: the
+    // server prepares everything (guard included) and the browser carries it.
+    if (settings.provider === LOCAL_PROVIDER) {
+      if (!isLoopbackUrl(settings.baseUrl)) {
+        return NextResponse.json({ error: 'The local provider only accepts a loopback address' }, { status: 400 })
+      }
+      return NextResponse.json({
+        data: { mode: LOCAL_PROVIDER, baseUrl: settings.baseUrl, model: settings.model, messages },
+      })
+    }
+
+    // `callAI` rebuilds the system turn from the same `guardSystemPrompt`, so the
+    // user turns are handed over as-is and both paths send identical messages.
+    const userTurns = messages.filter(m => m.role !== 'system')
+    const result = await callAI(settings, userTurns, { promptGuard })
     return NextResponse.json({ data: { result } })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'AI error'

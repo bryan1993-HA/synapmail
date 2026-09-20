@@ -3,7 +3,14 @@ import { authenticate } from '@/lib/apiAuth'
 import { query } from '@/lib/db'
 import { getAccessibleAccount } from '@/lib/accountAccess'
 import { sendMail } from '@/lib/smtp'
-import { appendToSentFolder } from '@/lib/imap'
+import { appendToSentFolder, getMessageSources } from '@/lib/imap'
+import { EML_CONTENT_TYPE, emlFilename } from '@/lib/eml'
+import {
+  FORWARD_ERROR,
+  FORWARD_MAX_TOTAL_BYTES,
+  parseForwardedMessages,
+  resolveForwardOrigin,
+} from '@/lib/forward'
 import { upsertContactsFromAddresses } from '@/lib/contacts'
 import { randomUUID } from 'crypto'
 
@@ -24,7 +31,20 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { accountId, to, cc, bcc, subject, html, text, inReplyTo, references, requestReadReceipt } = body
+    const { accountId, to, cc, bcc, subject, html, text, inReplyTo, references, requestReadReceipt, forwardedMessages } = body as {
+      accountId?: string
+      to?: string | string[]
+      cc?: string | string[]
+      bcc?: string | string[]
+      subject?: string
+      html?: string
+      text?: string
+      inReplyTo?: string
+      references?: string
+      requestReadReceipt?: boolean
+      /** WHOLE forwarded messages, attached as `.eml`. Validated by `parseForwardedMessages`. */
+      forwardedMessages?: unknown
+    }
 
     if (!accountId || !to || !subject) {
       return NextResponse.json({ error: 'accountId, to, and subject are required' }, { status: 400 })
@@ -43,6 +63,62 @@ export async function POST(req: Request) {
       token = randomUUID()
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
       trackedHtml = injectTrackingPixel(html, `${appUrl}/api/track/${token}`)
+    }
+
+    // Forwarding whole messages. The selection's ORIGIN account is not the sender's
+    // account: the user can change the "From" field after checking their messages.
+    // Re-reading in the sender's mailbox would attach the messages carrying the SAME
+    // uids in a DIFFERENT mailbox. The origin is therefore authorized separately, for
+    // read access (owner or active share).
+    let attachments: Array<{ filename: string; content: Buffer; contentType: string }> | undefined
+    if (forwardedMessages !== undefined) {
+      const parsed = parseForwardedMessages(forwardedMessages)
+      if (!parsed.ok) {
+        return NextResponse.json({ error: parsed.code, limit: parsed.detail }, { status: parsed.status })
+      }
+      const origin = await resolveForwardOrigin(account, parsed.value.accountId, id =>
+        getAccessibleAccount(id, authCtx.id)
+      )
+      if (!origin.ok) {
+        return NextResponse.json({ error: origin.code }, { status: origin.status })
+      }
+      const src = origin.value
+      const result = await getMessageSources(
+        {
+          id: src.id,
+          imapHost: src.imap_host,
+          imapPort: src.imap_port,
+          imapSecure: src.imap_secure,
+          username: src.username,
+          passwordEncrypted: src.password_encrypted,
+          oauthProvider: src.oauth_provider,
+          oauthAccessToken: src.oauth_access_token,
+          oauthRefreshToken: src.oauth_refresh_token,
+          oauthExpiresAt: src.oauth_expires_at,
+        },
+        parsed.value.folder,
+        parsed.value.uids,
+        FORWARD_MAX_TOTAL_BYTES
+      )
+      if (result.oversized) {
+        return NextResponse.json(
+          { error: FORWARD_ERROR.tooLarge, limit: FORWARD_MAX_TOTAL_BYTES },
+          { status: 413 }
+        )
+      }
+      // Nothing is sent truncated: a message that disappeared between selection and
+      // send cancels the send, and the window stays open with its draft.
+      if (result.missing.length) {
+        return NextResponse.json(
+          { error: FORWARD_ERROR.missing, limit: result.missing.length },
+          { status: 409 }
+        )
+      }
+      attachments = result.sources.map(m => ({
+        filename: emlFilename(m.subject),
+        content: m.source,
+        contentType: EML_CONTENT_TYPE,
+      }))
     }
 
     const { messageId, raw } = await sendMail(
@@ -69,6 +145,7 @@ export async function POST(req: Request) {
         inReplyTo,
         references,
         dispositionNotificationTo: requestReadReceipt ? account.email : undefined,
+        attachments,
       }
     )
 

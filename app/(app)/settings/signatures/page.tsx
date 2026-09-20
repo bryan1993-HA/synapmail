@@ -7,12 +7,14 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import useSWR from 'swr'
+import { useTranslations } from 'next-intl'
 import { Pencil, Trash2, Plus, Check, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { Signature } from '@/types/account'
 import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
+import { RowMenu, ContextMenuItem, ContextMenuSeparator, MENU_ICON } from '@/components/ui/ContextMenu'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -47,6 +49,7 @@ function SignatureEditor({
 }
 
 export default function SignaturesPage() {
+  const tRow = useTranslations('settings.rowActions')
   const { data, mutate } = useSWR<{ data: Signature[] }>('/api/signatures', fetcher)
   const signatures = data?.data ?? []
 
@@ -97,9 +100,9 @@ export default function SignaturesPage() {
     }
   }
 
-  const deleteSignature = async (id: string) => {
-    if (!confirm('Supprimer cette signature ?')) return
-    await fetch(`/api/signatures/${id}`, { method: 'DELETE' })
+  const deleteSignature = async (sig: Signature) => {
+    if (!confirm(tRow('signatureDeleteConfirm', { name: sig.name }))) return
+    await fetch(`/api/signatures/${sig.id}`, { method: 'DELETE' })
     await mutate()
   }
 
@@ -231,20 +234,19 @@ export default function SignaturesPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => startEdit(sig)}
-                      className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => deleteSignature(sig.id)}
-                      className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <RowMenu label={tRow('menu', { name: sig.name })} itemsKey={sig.id}>
+                    {close => (<>
+                      <ContextMenuItem
+                        itemKey="edit" icon={<Pencil className={MENU_ICON} />} label={tRow('edit')}
+                        onClick={() => startEdit(sig)} onClose={close} enabled
+                      />
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        itemKey="delete" icon={<Trash2 className={MENU_ICON} />} label={tRow('signatureDelete')}
+                        onClick={() => deleteSignature(sig)} onClose={close} enabled danger
+                      />
+                    </>)}
+                  </RowMenu>
                 </div>
                 {sig.contentHtml && (
                   <div

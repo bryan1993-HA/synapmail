@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
 import { encrypt } from '@/lib/encrypt'
+import { isLoopbackUrl, LOCAL_PROVIDER } from '@/lib/ai'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface AISettingsRow {
@@ -71,6 +72,12 @@ export async function PATCH(req: NextRequest) {
     featureImprove = true,
     featureTranslate = true,
   } = body
+
+  // Same rule as the settings screen, enforced here too: a remote address would
+  // be blocked by the browser as mixed content, and an API key is its path.
+  if (provider === LOCAL_PROVIDER && !isLoopbackUrl(baseUrl)) {
+    return NextResponse.json({ error: 'The local provider only accepts a loopback address' }, { status: 400 })
+  }
 
   const apiKeyEncrypted = apiKey ? encrypt(apiKey) : null
 

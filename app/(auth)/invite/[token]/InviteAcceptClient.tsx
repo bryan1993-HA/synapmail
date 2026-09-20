@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import Link from 'next/link'
+import { useAppName } from '@/components/providers'
 
 type InvitePreview = {
   accountEmail: string
@@ -16,6 +17,7 @@ type InvitePreview = {
 
 export default function InviteAcceptClient({ token }: { token: string }) {
   const t = useTranslations('auth.invite')
+  const appName = useAppName()
   const router = useRouter()
   const [preview, setPreview] = useState<InvitePreview | null>(null)
   const [previewError, setPreviewError] = useState('')
@@ -72,9 +74,9 @@ export default function InviteAcceptClient({ token }: { token: string }) {
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
           <div className="flex justify-center mb-4">
-            <img src="/brand/anime/synapmail-anime.svg" alt="Synapmail" className="w-16 h-16" />
+            <img src="/brand/anime/synapmail-anime.svg" alt={appName} className="w-16 h-16" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Synapmail</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{appName}</h1>
           {preview && (
             <p className="text-muted-foreground mt-1 text-sm">
               {t('subtitle', { owner: preview.ownerName, email: preview.accountEmail })}

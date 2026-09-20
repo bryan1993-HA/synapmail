@@ -1,11 +1,30 @@
 'use client'
 
+import { createContext, useContext } from 'react'
 import { SessionProvider } from 'next-auth/react'
-import { ThemeProvider } from 'next-themes'
+import { ThemeProvider } from '@/components/theme/ThemeProvider'
 import { SWRConfig } from 'swr'
 import { Toaster } from '@/components/ui/toast'
+import { DEFAULT_THEME, type Theme } from '@/lib/theme'
+import { DEFAULT_APP_NAME } from '@/lib/branding'
 
-export function Providers({ children }: { children: React.ReactNode }) {
+/**
+ * The instance name, resolved once on the server in `app/layout.tsx` and distributed
+ * here: every VISIBLE piece of text that names the product reads `useAppName()`, so a
+ * single setting is enough to rename them all.
+ */
+const AppNameContext = createContext(DEFAULT_APP_NAME)
+export const useAppName = () => useContext(AppNameContext)
+
+export function Providers({
+  initialTheme = DEFAULT_THEME,
+  appName = DEFAULT_APP_NAME,
+  children,
+}: {
+  initialTheme?: Theme
+  appName?: string
+  children: React.ReactNode
+}) {
   return (
     <SessionProvider>
       {/* Global SWR resilience:
@@ -22,9 +41,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
           errorRetryInterval: 5000,
         }}
       >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-          <Toaster />
+        <ThemeProvider initialTheme={initialTheme}>
+          <AppNameContext.Provider value={appName}>
+            {children}
+            <Toaster />
+          </AppNameContext.Provider>
         </ThemeProvider>
       </SWRConfig>
     </SessionProvider>

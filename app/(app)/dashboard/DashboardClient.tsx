@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
+import { openCompose as openComposeFrom } from '@/lib/compose'
 import useSWR, { mutate as globalMutate } from 'swr'
 import { useTranslations, useLocale } from 'next-intl'
 import {
@@ -239,6 +240,7 @@ export function DashboardClient() {
   const t = useTranslations('dashboard')
   const locale = useLocale()
   const router = useRouter()
+  const pathname = usePathname()
 
   // Account scope — null = all accounts combined. Persisted server-side per user.
   const { data: settingsRes, isLoading: settingsLoading } = useSWR<{ data: { dashboard_account_id: string | null } }>('/api/settings', fetcher)
@@ -296,10 +298,7 @@ export function DashboardClient() {
     return t('greetingEvening')
   }
 
-  const openCompose = () => {
-    router.push('/mail')
-    window.setTimeout(() => window.dispatchEvent(new CustomEvent('synapmail:compose')), 350)
-  }
+  const openCompose = () => openComposeFrom(pathname, router.push)
 
   const unread = useCountUp(d?.kpis.unreadTotal ?? 0, loaded)
   const sent = useCountUp(d?.kpis.sentToday ?? 0, loaded)
@@ -377,22 +376,6 @@ export function DashboardClient() {
               />
             )}
           </div>
-
-          <form
-            onSubmit={e => {
-              e.preventDefault()
-              const q = new FormData(e.currentTarget).get('q')?.toString().trim()
-              router.push(q ? `/mail?q=${encodeURIComponent(q)}` : '/mail')
-            }}
-            className="relative hidden max-w-[320px] flex-1 sm:block"
-          >
-            <input
-              name="q"
-              type="search"
-              placeholder={t('searchPlaceholder')}
-              className="h-9 w-full rounded-lg border border-border bg-card/70 pl-3 pr-3 text-sm outline-none backdrop-blur-sm focus-visible:ring-2 focus-visible:ring-violet-500"
-            />
-          </form>
 
           <button
             onClick={openCompose}

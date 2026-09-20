@@ -87,6 +87,7 @@
 - **API Keys** — Bearer tokens for scripts/agents, scoped to a read+write subset of the REST API, revocable at any time
 - **Full i18n** — English and French built-in, easy to extend
 - **Admin panel** — User management (create, role toggle, delete)
+- **Instance identity** — An admin sets the browser-tab name and favicon for the whole instance (login page included) from `/admin/users`; icons are accepted on their magic bytes (PNG, ICO, JPEG, WebP — SVG refused), 256 KiB max, and either half resets to the shipped default
 - **Microsoft OAuth2** — Connect Outlook/Live/Hotmail via XOAUTH2 (no password stored)
 - **No third-party fonts or trackers** — system font stack only, no external font/CDN dependency; all preferences and drafts persisted server-side (no `localStorage` for app state)
 

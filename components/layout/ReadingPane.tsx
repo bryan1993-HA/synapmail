@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { Reply, Forward, Trash2, Archive, Star, MoreHorizontal, Paperclip, Download, X, FileText, Image as ImageIcon, ReplyAll, MailX, CheckCircle2, AlertCircle, ShieldCheck, ShieldAlert, ShieldX, Filter, AlarmClock, CornerUpLeft, Users, ChevronRight } from 'lucide-react'
+import { Star, Flag, MoreHorizontal, Paperclip, Download, X, FileText, Image as ImageIcon, MailX, CheckCircle2, AlertCircle, ShieldCheck, ShieldAlert, ShieldX, Filter, AlarmClock, CornerUpLeft, Users, ChevronRight } from 'lucide-react'
 import { AIToolbar } from '@/components/ai/AIToolbar'
 import useSWR from 'swr'
 import type { Message } from '@/types/email'
@@ -13,6 +13,11 @@ import { cn } from '@/lib/utils'
 import { isInlinePgpMessage, extractInlinePgpMessage } from '@/lib/pgp'
 import { PgpDecryptPrompt } from '@/components/mail/PgpDecryptPrompt'
 import type { EmailAccount } from '@/types/account'
+import { useMailSelection } from '@/lib/mailSelection'
+import { messageHref, originOfMessage } from '@/lib/mailOrigin'
+import { DEFAULT_FLAG_KEY, flagByKey } from '@/lib/flags'
+import { FlagPicker } from '@/components/mail/FlagPicker'
+import { ThinScroll } from './ThinScroll'
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -47,7 +52,7 @@ function AttachmentSection({
 
   const attUrl = useCallback(
     (id: string, inline = false) =>
-      `/api/messages/${uid}/attachment/${id}?account=${accountId}&folder=${encodeURIComponent(folder)}${inline ? '&inline=true' : ''}`,
+      messageHref({ accountId, folder, uid }, `/attachment/${encodeURIComponent(id)}`) + (inline ? '&inline=true' : ''),
     [uid, accountId, folder]
   )
 
@@ -740,8 +745,11 @@ interface Props {
   accountId: string | null
   folder: string
   activeAccountId?: string | null
-  onDelete?: () => void
+  /** Opens the composer from the AI banner — the Reply button lives in the head bar. */
   onReply?: (msg: Message) => void
+  /** Still accepted for `ThreadPane` and the shared caller, but no longer wired here:
+   *  delete, reply-all and forward are head bar buttons. */
+  onDelete?: () => void
   onReplyAll?: (msg: Message) => void
   onForward?: (msg: Message) => void
   onMessageLoaded?: (msg: Message) => void
@@ -782,18 +790,37 @@ const REASON_CLASS: Record<FocusReason, string> = {
   attachment: 'text-muted-foreground border-border bg-muted',
 }
 
-export function ReadingPane({ uid, accountId, folder, activeAccountId, onDelete, onReply, onReplyAll, onForward, onMessageLoaded, onAiReply, permissions }: Props) {
+export function ReadingPane({ uid, accountId, folder, activeAccountId, onReply, onMessageLoaded, onAiReply, permissions }: Props) {
   const t = useTranslations('mail')
   const perms = permissions ?? DEFAULT_PERMISSIONS
-  const [isStarred, setIsStarred] = useState<boolean | null>(null)
+  // `null` = not touched yet in this session: the message's own value is authoritative.
+  const [flagKey, setFlagKey] = useState<string | null | undefined>(undefined)
+  const [flagMenu, setFlagMenu] = useState(false)
+  // The head bar toolbar carries the actions; this pane only calls `setFlag`.
+  const { run } = useMailSelection()
+  const flagMenuRef = useRef<HTMLDivElement>(null)
 
-  const swrKey = uid && accountId
-    ? `/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`
-    : null
+  // Light dismiss: ONE outside click closes, and that click still reaches its target (no
+  // overlay swallowing it). Escape closes too. The listener only exists while open.
+  useEffect(() => {
+    if (!flagMenu) return
+    const onDown = (e: MouseEvent) => {
+      if (!flagMenuRef.current?.contains(e.target as Node)) setFlagMenu(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFlagMenu(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [flagMenu])
+
+  const swrKey = uid && accountId ? messageHref({ accountId, folder, uid }) : null
 
   const { data: message, isLoading, error, mutate } = useSWR<Message>(swrKey, fetcher)
 
-  // Direction B — "à traiter" list for the empty state (heuristic, no LLM)
+  // Follow-up list for the empty state (heuristic, no LLM)
   const { data: focusRes } = useSWR<{ data: FocusItem[] }>(
     !uid ? `/api/focus${activeAccountId ? `?account=${activeAccountId}` : ''}` : null,
     fetcher,
@@ -808,10 +835,12 @@ export function ReadingPane({ uid, accountId, folder, activeAccountId, onDelete,
 
   useEffect(() => {
     if (message) {
-      setIsStarred(message.isStarred)
+      setFlagKey(undefined)
       onMessageLoaded?.(message)
-      if (!message.isRead && accountId && perms.canOrganize) {
-        fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
+      // Marking as read targets the LOADED message, by its origin: that is the correct
+      // one even if the list has switched folders in the meantime.
+      if (!message.isRead && perms.canOrganize) {
+        fetch(messageHref(originOfMessage(message)), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ isRead: true }),
@@ -820,29 +849,19 @@ export function ReadingPane({ uid, accountId, folder, activeAccountId, onDelete,
     }
   }, [message?.uid]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleDelete = async () => {
-    if (!uid || !accountId) return
-    await fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
-      method: 'DELETE',
-    })
-    onDelete?.()
-  }
-
-  const handleStar = async () => {
-    if (!uid || !accountId || !message) return
-    const newStarred = !isStarred
-    setIsStarred(newStarred)
-    await fetch(`/api/messages/${uid}?account=${accountId}&folder=${encodeURIComponent(folder)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isStarred: newStarred }),
-    })
-    mutate({ ...message, isStarred: newStarred }, false)
+  // The write belongs to the list (shared action): it sets the flag AND refreshes its
+  // rows. The pane only keeps the state of its own icon.
+  const handleFlag = (flag: string | null) => {
+    if (!message) return
+    setFlagKey(flag)
+    setFlagMenu(false)
+    run('setFlag', flag)
+    mutate({ ...message, flag, isStarred: flag !== null }, false)
   }
 
   if (!uid) {
     return (
-      <div className="h-full overflow-y-auto flex items-center justify-center px-6 py-10 select-none">
+      <ThinScroll className="h-full" viewportClassName="flex items-center justify-center px-6 py-10 select-none">
         <div className="w-full max-w-md">
           <div className="flex items-center gap-2 mb-4">
             <span className="h-[2px] w-9 rounded-full bg-gradient-to-r from-violet-500 to-blue-500" />
@@ -883,7 +902,7 @@ export function ReadingPane({ uid, accountId, folder, activeAccountId, onDelete,
             <span className="flex items-center gap-1.5"><kbd className="font-mono font-bold text-foreground/50 text-[10px]">#</kbd> {t('delete')}</span>
           </div>
         </div>
-      </div>
+      </ThinScroll>
     )
   }
 
@@ -919,7 +938,7 @@ export function ReadingPane({ uid, accountId, folder, activeAccountId, onDelete,
     )
   }
 
-  const starred = isStarred ?? message.isStarred
+  const flag = flagByKey(flagKey !== undefined ? flagKey : (message.flag ?? (message.isStarred ? DEFAULT_FLAG_KEY : null)))
   const spoofedBrand = detectSpoofedBrand(message.from.name ?? '', message.from.address ?? '')
   const urgencyWord = detectUrgencyInSubject(message.subject ?? '')
 
@@ -971,41 +990,31 @@ export function ReadingPane({ uid, accountId, folder, activeAccountId, onDelete,
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Actions — reply / forward / archive / delete live in the head bar (the shared
+          toolbar): only what it does not carry stays here. */}
       <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border shrink-0">
-        {perms.canSend && (
-          <>
-            <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => onReply?.(message)}>
-              <Reply className="w-3.5 h-3.5" /> {t('reply')}
-            </Button>
-            <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => onReplyAll?.(message)}>
-              <ReplyAll className="w-3.5 h-3.5" /> {t('replyAll')}
-            </Button>
-            <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => onForward?.(message)}>
-              <Forward className="w-3.5 h-3.5" /> {t('forward')}
-            </Button>
-          </>
-        )}
         <div className="flex-1" />
         {perms.canOrganize && (
           <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn('h-8 w-8 p-0', starred && 'text-yellow-500 hover:text-yellow-600')}
-              onClick={handleStar}
-            >
-              <Star className={cn('w-3.5 h-3.5', starred && 'fill-current')} />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              <Archive className="w-3.5 h-3.5" />
-            </Button>
+            <div className="relative" ref={flagMenuRef}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                data-reading-flag
+                title={flag ? t(`flags.${flag.labelKey}`) : t('flag')}
+                aria-expanded={flagMenu}
+                onClick={() => setFlagMenu(o => !o)}
+              >
+                <Flag className={cn('w-3.5 h-3.5', flag && 'fill-current')} style={flag ? { color: flag.color } : undefined} />
+              </Button>
+              {flagMenu && (
+                <div className="absolute top-full right-0 z-50 mt-1 rounded-xl border border-border bg-popover shadow-xl">
+                  <FlagPicker current={flag?.key ?? null} onPick={handleFlag} />
+                </div>
+              )}
+            </div>
           </>
-        )}
-        {perms.canDelete && (
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive" onClick={handleDelete}>
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
         )}
         <Button
           variant="ghost"
@@ -1057,9 +1066,9 @@ export function ReadingPane({ uid, accountId, folder, activeAccountId, onDelete,
       )}
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <ThinScroll className="flex-1">
         <EmailBody message={message} />
-      </div>
+      </ThinScroll>
     </div>
   )
 }

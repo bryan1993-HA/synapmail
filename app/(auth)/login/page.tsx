@@ -6,11 +6,14 @@ import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Label } from '@/components/ui/label'
 import Link from 'next/link'
+import { useAppName } from '@/components/providers'
 
 export default function LoginPage() {
   const t = useTranslations('auth.login')
+  const appName = useAppName()
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -41,11 +44,11 @@ export default function LoginPage() {
           <div className="flex justify-center mb-4">
             <img
               src="/brand/anime/synapmail-anime.svg"
-              alt="Synapmail"
+              alt={appName}
               className="w-16 h-16"
             />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Synapmail</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{appName}</h1>
           <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
         </div>
 
@@ -68,9 +71,8 @@ export default function LoginPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="password">{t('password')}</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required

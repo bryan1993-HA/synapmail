@@ -2,22 +2,14 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { isAdmin } from '@/lib/requireAdmin'
 
 export const dynamic = 'force-dynamic'
-
-async function requireAdmin(session: { user?: { id?: string } } | null) {
-  if (!session?.user?.id) return false
-  const rows = await query<{ role: string }>(
-    'SELECT role FROM users WHERE id = $1',
-    [session.user.id]
-  )
-  return rows[0]?.role === 'admin'
-}
 
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await requireAdmin(session))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await isAdmin(session))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const users = await query(
@@ -32,7 +24,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await requireAdmin(session))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await isAdmin(session))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const body = await req.json()

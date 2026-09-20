@@ -114,15 +114,22 @@ export async function initDb(): Promise<void> {
     )
   `)
 
-  // Migrations — colonnes ajoutées après la création initiale
+  // Migrations — columns added after the initial creation
   await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS undo_send_delay INTEGER NOT NULL DEFAULT 10`)
   await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS start_view VARCHAR(20) NOT NULL DEFAULT 'inbox'`)
-  // Préférences UI auparavant en localStorage — persistées ici pour survivre au reload / multi-device
+  // UI preferences previously in localStorage — persisted here to survive reloads / multiple devices
   await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS active_account_id UUID REFERENCES email_accounts(id) ON DELETE SET NULL`)
   await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS sidebar_collapsed BOOLEAN NOT NULL DEFAULT false`)
   await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS mail_density VARCHAR(20) NOT NULL DEFAULT 'comfortable'`)
   await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS list_width INTEGER NOT NULL DEFAULT 320`)
   await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS dashboard_account_id UUID REFERENCES email_accounts(id) ON DELETE SET NULL`)
+  // Update banner: the version whose announcement the user dismissed (previously in sessionStorage)
+  await query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS update_dismissed_version VARCHAR(50)`)
+  // Prompt-injection guard, per mailbox. Enabled by default: safety is the default.
+  await query(`ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS prompt_guard BOOLEAN NOT NULL DEFAULT true`)
+  // Badge colour chosen by the user. NULL = automatic colour derived from position:
+  // no existing mailbox changes appearance on upgrade.
+  await query(`ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS badge_color VARCHAR(7)`)
 
   await query(`
     CREATE TABLE IF NOT EXISTS contacts (
@@ -296,7 +303,7 @@ export async function initDb(): Promise<void> {
     )
   `)
 
-  // Brouillons de composition — un par (utilisateur, compte), remplace le localStorage `synapmail:draft:${accountId}`
+  // Compose drafts — one per (user, account), replaces the localStorage `synapmail:draft:${accountId}`
   await query(`
     CREATE TABLE IF NOT EXISTS drafts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -312,7 +319,7 @@ export async function initDb(): Promise<void> {
     )
   `)
 
-  // Clés API — accès Bearer lecture+écriture pour usage machine/agent, en plus du cookie de session
+  // API keys — read+write Bearer access for machine/agent use, alongside the session cookie
   await query(`
     CREATE TABLE IF NOT EXISTS api_keys (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -327,9 +334,9 @@ export async function initDb(): Promise<void> {
   `)
   await query(`CREATE INDEX IF NOT EXISTS api_keys_hash_idx ON api_keys(key_hash)`)
 
-  // Journal des requêtes Bearer par clé — un log léger (méthode + chemin + IP), pas les
-  // requêtes de session. Alimenté fire-and-forget par lib/apiAuth.ts à chaque auth réussie ;
-  // purgé par le scheduler au-delà de 30 jours (voir lib/scheduler.ts processApiKeyLogCleanup).
+  // Per-key log of Bearer requests — a lightweight log (method + path + IP), not the
+  // session requests. Filled fire-and-forget by lib/apiAuth.ts on every successful auth;
+  // purged by the scheduler beyond 30 days (see lib/scheduler.ts processApiKeyLogCleanup).
   await query(`
     CREATE TABLE IF NOT EXISTS api_key_requests (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -342,13 +349,13 @@ export async function initDb(): Promise<void> {
   `)
   await query(`CREATE INDEX IF NOT EXISTS api_key_requests_key_idx ON api_key_requests(api_key_id, created_at DESC)`)
 
-  // Invité en attente d'acceptation : bloque la connexion tant que le mot de passe placeholder
-  // n'a pas été remplacé via /api/invites/[token] (voir account_shares ci-dessous)
+  // Invitee awaiting acceptance: blocks sign-in until the placeholder password has been
+  // replaced through /api/invites/[token] (see account_shares below)
   await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active'`)
 
-  // Partage de compte — invitation d'un autre utilisateur avec permissions fines par action.
-  // Pas de colonne can_read : l'existence d'une ligne status='active' EST le droit de lecture ;
-  // il n'y a pas de cas d'usage pour "invité mais lecture coupée" en v1.
+  // Account sharing — inviting another user with fine-grained per-action permissions.
+  // No can_read column: the existence of a status='active' row IS the read right;
+  // there is no use case for "invited but read revoked" in v1.
   await query(`
     CREATE TABLE IF NOT EXISTS account_shares (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -372,12 +379,45 @@ export async function initDb(): Promise<void> {
   await query(`CREATE INDEX IF NOT EXISTS account_shares_account_idx ON account_shares(account_id)`)
   await query(`CREATE INDEX IF NOT EXISTS account_shares_invitee_idx ON account_shares(invitee_user_id)`)
   await query(`CREATE INDEX IF NOT EXISTS account_shares_token_hash_idx ON account_shares(invite_token_hash)`)
-  // Empêche un second partage pending/active vers la même personne pour le même compte ;
-  // une relance après révocation insère simplement une nouvelle ligne (l'ancienne reste en historique)
+  // Prevents a second pending/active share to the same user for the same account;
+  // re-inviting after a revocation simply inserts a new row (the old one stays as history)
   await query(`
     CREATE UNIQUE INDEX IF NOT EXISTS account_shares_active_unique_idx
     ON account_shares(account_id, invitee_user_id)
     WHERE status IN ('pending', 'active')
+  `)
+
+  // Completed unsubscribes — so an agent does not start over on a newsletter already left.
+  // The grouping key (List-Id or sender address) is stored as is: it is what ties a row
+  // to the group listed by `GET /api/subscriptions`.
+  await query(`
+    CREATE TABLE IF NOT EXISTS unsubscriptions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+      group_key TEXT NOT NULL,
+      method VARCHAR(20) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(account_id, group_key)
+    )
+  `)
+  // The history survives tidying up: once the messages are moved, the group
+  // disappears from `GET /api/subscriptions` but the row stays, with enough to
+  // read it without the mailbox (sender, List-Id, outcome).
+  await query(`ALTER TABLE unsubscriptions ADD COLUMN IF NOT EXISTS sender_address TEXT`)
+  await query(`ALTER TABLE unsubscriptions ADD COLUMN IF NOT EXISTS sender_name TEXT`)
+  await query(`ALTER TABLE unsubscriptions ADD COLUMN IF NOT EXISTS list_id TEXT`)
+
+  // Instance identity — ONE single row, enforced by `id BOOLEAN PRIMARY KEY DEFAULT TRUE`
+  // constrained to TRUE: a second insert violates the primary key. Everything NULL = the
+  // original appearance, so no instance changes look on upgrade.
+  await query(`
+    CREATE TABLE IF NOT EXISTS instance_settings (
+      id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+      app_name VARCHAR(60),
+      favicon BYTEA,
+      favicon_type VARCHAR(40),
+      favicon_updated_at TIMESTAMPTZ
+    )
   `)
 }
 

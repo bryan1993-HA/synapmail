@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import useSWR from 'swr'
+import { useTranslations } from 'next-intl'
 import {
   Filter, Plus, Trash2, Pencil, Play, AlertCircle, X,
   Zap, CheckCircle2, ArrowRight, ToggleLeft, ToggleRight,
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
+import { RowMenu, ContextMenuItem, ContextMenuSeparator, MENU_ICON } from '@/components/ui/ContextMenu'
 import type {
   EmailRule, RuleCondition, RuleAction, RuleField,
   RuleOperator, RuleActionType, RuleTemplate,
@@ -560,6 +562,8 @@ function RuleCard({
   onDragOver: (e: React.DragEvent) => void
   onDrop: () => void
 }) {
+  const tRow = useTranslations('settings.rowActions')
+
   return (
     <div
       draggable
@@ -617,15 +621,20 @@ function RuleCard({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button onClick={onEdit}
-            className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={onDelete}
-            className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+        <div className="shrink-0">
+          <RowMenu label={tRow('menu', { name: rule.name })} itemsKey={rule.id}>
+            {close => (<>
+              <ContextMenuItem
+                itemKey="edit" icon={<Pencil className={MENU_ICON} />} label={tRow('edit')}
+                onClick={onEdit} onClose={close} enabled
+              />
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                itemKey="delete" icon={<Trash2 className={MENU_ICON} />} label={tRow('ruleDelete')}
+                onClick={onDelete} onClose={close} enabled danger
+              />
+            </>)}
+          </RowMenu>
         </div>
       </div>
     </div>
@@ -646,6 +655,7 @@ interface Props {
 }
 
 export default function RulesClient({ prefill }: Props) {
+  const tRow = useTranslations('settings.rowActions')
   const { data: accountsData } = useSWR<{ data: { id: string; name: string; email: string }[] }>('/api/accounts', fetcher)
   const accounts = accountsData?.data ?? []
 
@@ -733,9 +743,9 @@ export default function RulesClient({ prefill }: Props) {
   }
 
   // ------- Delete -------
-  const handleDelete = async (id: string) => {
-    if (!confirm('Supprimer cette règle ?')) return
-    await fetch(`/api/rules/${id}`, { method: 'DELETE' })
+  const handleDelete = async (rule: EmailRule) => {
+    if (!confirm(tRow('ruleDeleteConfirm', { name: rule.name }))) return
+    await fetch(`/api/rules/${rule.id}`, { method: 'DELETE' })
     await mutate()
   }
 
@@ -951,7 +961,7 @@ export default function RulesClient({ prefill }: Props) {
                 <RuleCard
                   rule={rule}
                   onEdit={() => { setCreating(false); setEditing(rule); setError(null) }}
-                  onDelete={() => handleDelete(rule.id)}
+                  onDelete={() => handleDelete(rule)}
                   onToggle={() => handleToggle(rule)}
                   isDragging={dragId === rule.id}
                   onDragStart={() => setDragId(rule.id)}

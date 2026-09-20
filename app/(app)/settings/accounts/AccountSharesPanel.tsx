@@ -6,6 +6,7 @@ import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Trash2 } from 'lucide-react'
+import { RowMenu, ContextMenuItem, MENU_ICON } from '@/components/ui/ContextMenu'
 import type { AccountShare } from '@/types/account'
 import { SettingsSection, SettingsRow, Toggle } from '@/components/settings/primitives'
 import { cn } from '@/lib/utils'
@@ -67,9 +68,11 @@ export function AccountSharesPanel({ accountId }: { accountId: string; accountEm
     }
   }
 
-  const handleRevoke = async (shareId: string) => {
-    if (!confirm(t('revokeConfirm'))) return
-    await fetch(`/api/accounts/${accountId}/shares/${shareId}`, { method: 'DELETE' })
+  // The confirmation NAMES the invitee: on an account shared with several people,
+  // "Revoke access?" does not say which one is being removed.
+  const handleRevoke = async (share: AccountShare) => {
+    if (!confirm(t('revokeNamed', { email: share.inviteeEmail }))) return
+    await fetch(`/api/accounts/${accountId}/shares/${share.id}`, { method: 'DELETE' })
     mutate()
   }
 
@@ -102,9 +105,14 @@ export function AccountSharesPanel({ accountId }: { accountId: string; accountEm
                 </div>
               </div>
               {(share.status === 'pending' || share.status === 'active') && (
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive shrink-0" onClick={() => handleRevoke(share.id)}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
+                <RowMenu label={t('rowMenu', { name: share.inviteeEmail })} itemsKey={share.id}>
+                  {close => (
+                    <ContextMenuItem
+                      itemKey="revoke" icon={<Trash2 className={MENU_ICON} />} label={t('revokeLabel')}
+                      onClick={() => handleRevoke(share)} onClose={close} enabled danger
+                    />
+                  )}
+                </RowMenu>
               )}
             </div>
           ))}

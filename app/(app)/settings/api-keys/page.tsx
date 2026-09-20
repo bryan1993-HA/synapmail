@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
+import { useTranslations } from 'next-intl'
 import { Plus, Trash2, Terminal, Copy, Check, TriangleAlert, ChevronDown, Activity } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { ApiKey, ApiKeyRequestLog } from '@/types/account'
 import { SettingsPage, SettingsHeader } from '@/components/settings/primitives'
+import { RowMenu, ContextMenuItem, MENU_ICON } from '@/components/ui/ContextMenu'
 import { cn } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -46,6 +48,7 @@ function ActivityPanel({ keyId }: { keyId: string }) {
 }
 
 export default function ApiKeysPage() {
+  const tRow = useTranslations('settings.rowActions')
   const { data, mutate } = useSWR<{ data: ApiKey[] }>('/api/api-keys', fetcher)
   const keys = data?.data ?? []
 
@@ -80,9 +83,9 @@ export default function ApiKeysPage() {
     }
   }
 
-  const revokeKey = async (id: string) => {
-    if (!confirm('Révoquer cette clé ? Toute application qui l\'utilise perdra immédiatement l\'accès.')) return
-    await fetch(`/api/api-keys/${id}`, { method: 'DELETE' })
+  const revokeKey = async (key: ApiKey) => {
+    if (!confirm(tRow('apiKeyRevokeConfirm', { name: key.name }))) return
+    await fetch(`/api/api-keys/${key.id}`, { method: 'DELETE' })
     await mutate()
   }
 
@@ -182,13 +185,14 @@ export default function ApiKeysPage() {
                     {key.requestCount24h > 0 ? `${key.requestCount24h} / 24h` : 'Activité'}
                     <ChevronDown className={cn('w-3 h-3 transition-transform', expanded && 'rotate-180')} />
                   </button>
-                  <button
-                    onClick={() => revokeKey(key.id)}
-                    className="w-8 h-8 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    title="Révoquer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <RowMenu label={tRow('menu', { name: key.name })} itemsKey={key.id}>
+                    {close => (
+                      <ContextMenuItem
+                        itemKey="revoke" icon={<Trash2 className={MENU_ICON} />} label={tRow('apiKeyRevoke')}
+                        onClick={() => revokeKey(key)} onClose={close} enabled danger
+                      />
+                    )}
+                  </RowMenu>
                 </div>
               </div>
               {expanded && <ActivityPanel keyId={key.id} />}

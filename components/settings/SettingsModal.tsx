@@ -74,7 +74,9 @@ export function SettingsModal() {
             )}
           >
             {NAV_ITEMS.map(({ seg, key, icon: Icon }) => (
-              <Link key={seg} href={`/settings/${seg}`} className={linkClass(segment === seg)}>
+              // `replace`: switching tabs must not push a history entry, otherwise the close
+              // button (a single back step) returns to the previous tab instead of closing.
+              <Link key={seg} href={`/settings/${seg}`} replace className={linkClass(segment === seg)}>
                 <Icon className="h-4 w-4 shrink-0" />
                 <span>{t(key)}</span>
               </Link>
