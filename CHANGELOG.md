@@ -7,6 +7,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-09-20 — En-tête d'application, sidebar repensée, recherche et IA locale
+
 ### Added
 - **Le bouton du volet de lecture dit « Résumer », et les écrans IA parlent la langue du visiteur**
   (`components/ai/AIToolbar.tsx`, `app/(app)/settings/ai/AISettingsClient.tsx`, `locales/*.json`) : le
