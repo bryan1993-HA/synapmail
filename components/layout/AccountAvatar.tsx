@@ -7,6 +7,7 @@ import { accountColor, readableInk } from '@/lib/accountColor'
 import type { ColorableAccount } from '@/lib/accountColor'
 import type { EmailAccount } from '@/types/account'
 import { ACCOUNTS_KEY } from '@/lib/unreadSignal'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 
 export { accountColor, readableInk } from '@/lib/accountColor'
 
@@ -85,7 +86,7 @@ export function useAccountAccent() {
   const { data: accountsData } = useSWR<{ data: EmailAccount[] }>(
     ACCOUNTS_KEY, fetchJson, { revalidateOnFocus: true, refreshInterval: 60000 },
   )
-  const { data: settingsData } = useSWR<{ data: { active_account_id: string | null } }>('/api/settings', fetchJson)
+  const { data: settingsData } = useSWR<{ data: { active_account_id: string | null } }>(SETTINGS_KEY, fetchJson)
 
   useEffect(() => {
     if (settingsData?.data?.active_account_id) setActiveAccountId(settingsData.data.active_account_id)
@@ -101,18 +102,16 @@ export function useAccountAccent() {
   const activeAccount = resolveActiveAccount(accounts, activeAccountId)
   const colorIndex = activeAccount ? accounts.indexOf(activeAccount) : 0
   /**
-   * Basculer de boite, en UN seul endroit : l'evenement part d'abord (l'accent
-   * tourne sur le clic), l'etat local suit, la preference est ecrite ensuite. La
-   * barre laterale et l'omnibar (lot H3f) appellent CETTE fonction, jamais une copie.
+   * Switch mailbox, in ONE place: the event goes out first (the accent turns on the
+   * click), the local state follows, the preference is written through
+   * `saveSettings` — so the shared cache turns over with it and a focus
+   * revalidation racing the write cannot put the old mailbox back. The sidebar and
+   * the omnibar (lot H3f) call THIS function, never a copy.
    */
   const switchAccount = (id: string) => {
     window.dispatchEvent(new CustomEvent('synapmail:account-change', { detail: id }))
     setActiveAccountId(id)
-    fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active_account_id: id }),
-    })
+    void saveSettings({ active_account_id: id })
   }
   return { accounts, activeAccount, colorIndex, vars: accentVars(activeAccount, colorIndex), switchAccount }
 }

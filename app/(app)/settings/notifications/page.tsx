@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import useSWR from 'swr'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 import { Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -18,7 +19,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 export default function NotificationsPage() {
   const t = useTranslations('settings.notifications')
   const tc = useTranslations('settings.common')
-  const { data, mutate } = useSWR<{ data: UserSettings }>('/api/settings', fetcher)
+  const { data } = useSWR<{ data: UserSettings }>(SETTINGS_KEY, fetcher)
   const settings = data?.data
 
   const [enabled, setEnabled] = useState(true)
@@ -52,12 +53,7 @@ export default function NotificationsPage() {
       if (enabled && permissionState === 'default') {
         await requestPermission()
       }
-      await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notifications: enabled }),
-      })
-      await mutate()
+      await saveSettings({ notifications: enabled })
       setSuccess(true)
       setTimeout(() => setSuccess(false), 2000)
     } finally {

@@ -18,7 +18,8 @@ import {
   accumulateSearchStream, isSearchQuery, parseNdjsonChunk,
   type SearchField, type SearchScope, type SearchStreamChunk, type SearchStreamState,
 } from '@/lib/search'
-import useSWR, { mutate as globalMutate } from 'swr'
+import useSWR from 'swr'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 import type { Message, Folder, ReadReceipt } from '@/types/email'
 import type { EmailAccount } from '@/types/account'
 import { MessageContextMenu, type ContextMenuState } from '@/components/ui/MessageContextMenu'
@@ -172,7 +173,7 @@ export function MessageList({ folder, selectedOrigin, onSelect, onSelectThread, 
   // porter exactement la couleur et les lettres que la barre lui donne déjà.
   const { accounts } = useAccountAccent()
 
-  const { data: settingsData } = useSWR<{ data: AppSettings }>('/api/settings', fetcher)
+  const { data: settingsData } = useSWR<{ data: AppSettings }>(SETTINGS_KEY, fetcher)
   const threadView = settingsData?.data?.thread_view ?? true
   // No fallback: the list is only requested once the page size is known
   // (measured: one request at 30 then one at the real size, the first for nothing).
@@ -181,13 +182,7 @@ export function MessageList({ folder, selectedOrigin, onSelect, onSelectThread, 
   // Direction B — comfortable / compact density
   const density = settingsData?.data?.mail_density ?? 'comfortable'
   const changeDensity = (mode: DensityMode) => {
-    globalMutate('/api/settings', (curr: { data: Record<string, unknown> } | undefined) =>
-      curr ? { data: { ...curr.data, mail_density: mode } } : curr, false)
-    fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mail_density: mode }),
-    }).then(() => globalMutate('/api/settings'))
+    void saveSettings({ mail_density: mode })
   }
   const compact = density === 'compact'
 

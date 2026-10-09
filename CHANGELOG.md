@@ -7,6 +7,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Un changement de boîte active pouvait être annulé en silence par une revalidation** (`lib/settings.ts`,
+  `components/layout/AccountAvatar.tsx` et tous les écrivains de `/api/settings`) : le changement de compte écrivait
+  `/api/settings` par un `fetch` nu, sans mutation de la clé SWR partagée ; un alt-tab avant la réponse du PATCH
+  relançait la revalidation au focus, qui ramenait l'ancienne ligne. La forme en deux temps des autres écrivains
+  (`mutate(key, value, false)` puis `fetch` détaché) laissait la même fenêtre, plus courte. `saveSettings()` est
+  désormais la seule façon d'écrire un réglage : la promesse du PATCH EST la mutation (affichage immédiat, revalidation
+  concurrente ignorée, ligne répondue mise en cache, retour arrière si refus) ; `SETTINGS_KEY` remplace la chaîne
+  recopiée. Bancs : `scripts/check-settings-write.mjs` (`--negative` rejoue l'écriture en deux temps) et
+  `scripts/check-settings-race-browser.mjs` (PATCH retenu sur le fil, focus forcé, vraie souris).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

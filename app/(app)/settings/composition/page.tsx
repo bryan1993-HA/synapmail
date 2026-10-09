@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import useSWR from 'swr'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 import { Timer, TimerOff, PenSquare } from 'lucide-react'
 import {
   SettingsPage, SettingsHeader, SettingsSection, ChoiceCards, SaveBar,
@@ -17,7 +18,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 export default function CompositionPage() {
   const t = useTranslations('settings.composition')
   const tc = useTranslations('settings.common')
-  const { data, mutate } = useSWR<{ data: UserSettings }>('/api/settings', fetcher)
+  const { data } = useSWR<{ data: UserSettings }>(SETTINGS_KEY, fetcher)
   const settings = data?.data
 
   const [undoDelay, setUndoDelay] = useState(10)
@@ -33,12 +34,7 @@ export default function CompositionPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ undo_send_delay: undoDelay }),
-      })
-      await mutate()
+      await saveSettings({ undo_send_delay: undoDelay })
       setSuccess(true)
       setTimeout(() => setSuccess(false), 2000)
     } finally {
