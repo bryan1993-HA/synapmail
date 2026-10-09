@@ -7,6 +7,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Un mot de passe refusé faisait retenter un login IMAP toutes les minutes, par onglet, sans fin** (`lib/idle.ts`,
+  `lib/imap.ts`) : le guet IMAP IDLE relançait toute connexion échouée avec un délai plafonné mais sans plafond de
+  tentatives — exactement ce que fail2ban compte avant de bannir l'IP du proxy. Sur un login refusé
+  (`authenticationFailed` d'imapflow), le guet s'arrête pour de bon (le rafraîchissement périodique reste le filet) ; les
+  autres échecs gardent le délai croissant. Trouvé en chemin et corrigé dans `createClient()` pour tous les appelants :
+  un login refusé laissait la socket TCP ouverte, et l'écouteur `error` est désormais posé avant `connect()`.
+  Banc : `scripts/check-idle-auth-stop.mjs` (faux serveur IMAP local ; `--negative`).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

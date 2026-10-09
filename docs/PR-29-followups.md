@@ -69,11 +69,17 @@ Classé par sévérité. Cocher au fur et à mesure.
   reçoit du NDJSON brut au lieu d'un objet JSON (`res.json()` plante), et le préfixe `aiSafety` se répète
   par ligne.
 
-- [ ] **`lib/idle.ts`** — le watcher IMAP IDLE retente une connexion en échec indéfiniment (délai plafonné
+- [x] **`lib/idle.ts`** — le watcher IMAP IDLE retente une connexion en échec indéfiniment (délai plafonné
   à 60s mais pas de plafond de tentatives). Un mot de passe expiré/changé fait retenter un login IMAP
   toutes les 60s par onglet ouvert, indéfiniment — exactement le pattern qui a déjà fait bannir l'IP du
   reverse-proxy par fail2ban sur cette infra (cf. mémoire projet "Infra Stalwart + NPM"). Ajouter un
-  plafond de tentatives / circuit-breaker.
+  plafond de tentatives / circuit-breaker. — Fixed without a counter: the watcher gives up for good on
+  the one failure that never heals, a rejected login (`authenticationFailed` set by imapflow), and keeps
+  its capped backoff for everything else (refused connection, transport drop). Fail2ban counts logins,
+  and one wrong login per stream is what a mail client sends. Found on the way: a rejected login left
+  the TCP socket open in `createClient()` (imapflow only tears it down on transport errors) — closed
+  there, for all 26 callers. Bench: `scripts/check-idle-auth-stop.mjs` (fake IMAP server on loopback;
+  `--negative` loads a copy of the module without the guard and must go red).
 
 - [ ] **`app/api/stream/route.ts`** — le lookup du `?account=` optionnel (pour le watch IMAP IDLE) n'a pas
   de try/catch. Une erreur DB transitoire plante toute la connexion SSE (500) au lieu de juste sauter le
