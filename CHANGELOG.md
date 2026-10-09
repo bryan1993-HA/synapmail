@@ -7,6 +7,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Dans un fil, déplier ou supprimer un message pouvait viser l'autre copie du même échange**
+  (`components/layout/ThreadPane.tsx`, `app/(app)/mail/MailClient.tsx`) : un fil peut contenir deux messages sous un
+  même uid — la copie reçue et la copie envoyée du même échange. `ThreadPane` gardait ses cartes dépliées par uid, et
+  `handleThreadDelete` filtrait et retrouvait le message par uid : déplier une copie dépliait les deux, et supprimer
+  l'une pouvait toucher l'autre. Les deux passent désormais par l'origine (compte, dossier, uid) que le reste du flux
+  courrier porte déjà : cartes clés par `originKey()`, rappel de suppression avec le `MessageOrigin` complet, requête
+  adressée via `messageHref()`. Banc : `scripts/check-thread-origin.mjs` (pur, `--negative` réinjecte les lignes
+  clés par uid et doit tomber — 2 assertions).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

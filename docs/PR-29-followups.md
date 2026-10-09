@@ -30,12 +30,15 @@ Classé par sévérité. Cocher au fur et à mesure.
 
 ## 🟠 Bugs qui contredisent des corrections annoncées par le PR
 
-- [ ] **`components/layout/ThreadPane.tsx`** — `expandedUids` et certains lookups de message de fil
+- [x] **`components/layout/ThreadPane.tsx`** — `expandedUids` et certains lookups de message de fil
   indexent encore par `uid` seul, pas par dossier+uid, alors que le PR corrige explicitement ce problème
   ailleurs dans le même fichier (`messageHref`/`originKey`). Un fil mêlant un message Inbox et sa copie
   Sent avec le même numéro d'uid peut développer/replier le mauvais message. Même souci dans
   `app/(app)/mail/MailClient.tsx` `handleThreadDelete(uid)` (filtre/`find` par uid nu) — peut supprimer ou
-  cibler le mauvais message du fil.
+  cibler le mauvais message du fil. — Fixed: expanded cards are keyed by `originKey()` (account, folder,
+  uid); the card's delete callback carries the full `MessageOrigin`, and `handleThreadDelete` filters by
+  `sameOrigin()` and addresses the request through `messageHref()`. Bench: `scripts/check-thread-origin.mjs`
+  (`--negative` re-injects the uid-keyed lines and must go red).
 
 - [ ] **`lib/folderActions.ts` — `isDescendant()`** ne fait pas la normalisation Unicode NFC que
   `samePath()` a justement été écrite pour ajouter (commentaire de `samePath()` : un serveur IMAP peut
