@@ -40,7 +40,10 @@ export function ThemeProvider({
   children: React.ReactNode
 }) {
   const [theme, setThemeState] = useState<Theme>(initialTheme)
-  const [systemDark, setSystemDark] = useState(false)
+  // Read the OS preference on the very first client render: starting from `false`
+  // resolved `system` to light for one render, which removed the `dark` class the
+  // blocking script had just applied — a dark→light→dark flash on every load.
+  const [systemDark, setSystemDark] = useState(prefersDark)
 
   // `user_settings.theme` is authoritative (cross-device); the cookie is only a local
   // mirror for SSR. It is applied just once, otherwise a preference changed in the tab
@@ -63,7 +66,6 @@ export function ThemeProvider({
   // `system` follows OS changes live, with no reload.
   useEffect(() => {
     const media = window.matchMedia(DARK_MEDIA_QUERY)
-    setSystemDark(media.matches)
     const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches)
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)
