@@ -7,6 +7,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Une erreur de base passagère coupait tout le flux temps réel** (`app/api/stream/route.ts`) : la recherche optionnelle
+  du compte `?account=` (pour le guet IMAP IDLE) n'avait pas de gestion d'erreur ; le client recevait un 500 au lieu du
+  flux et perdait aussi les événements du planificateur (`scheduled_sent`, `rule_applied`, `account_share_accepted`).
+  Une recherche en échec est journalisée et traitée comme « pas de compte » : le flux s'ouvre sans guet IMAP, comme le
+  commentaire le promettait. Banc : `scripts/check-stream-lookup.mjs` (`--negative` : 5 assertions sur 6 tombent).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

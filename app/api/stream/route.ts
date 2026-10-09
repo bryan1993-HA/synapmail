@@ -14,11 +14,16 @@ export async function GET(req: Request) {
   const userId = session.user?.id ?? ''
   const encoder = new TextEncoder()
 
-  // Account to watch in real time. Missing or inaccessible → the stream keeps its
-  // scheduler events, with no IMAP watch (not an error: real time is an extra, the
-  // periodic refresh remains the safety net).
+  // Account to watch in real time. Missing, inaccessible or unresolvable (transient DB
+  // error) → the stream keeps its scheduler events, with no IMAP watch (not an error:
+  // real time is an extra, the periodic refresh remains the safety net).
   const accountId = new URL(req.url).searchParams.get(STREAM_ACCOUNT_PARAM)
-  const account = accountId ? await getAccessibleAccount(accountId, userId) : null
+  const account = accountId
+    ? await getAccessibleAccount(accountId, userId).catch((err: unknown) => {
+        console.error('[stream] account lookup failed, streaming without IMAP watch:', err)
+        return null
+      })
+    : null
 
   // Stream teardown. `start()` used to return a cleanup function, which the streams API
   // never calls: the listeners stayed attached and, now, the IMAP connection would stay
