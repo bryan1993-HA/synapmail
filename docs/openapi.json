@@ -1635,6 +1635,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "413": {
+            "description": "`content` + `context` exceed the 200 000-character ceiling (`AI_CONTENT_MAX_CHARS`). The body names it: `{ error, limit }`."
+          },
           "500": {
             "$ref": "#/components/responses/ServerError"
           }

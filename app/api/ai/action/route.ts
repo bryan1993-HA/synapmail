@@ -2,7 +2,7 @@ import { authorize } from '@/lib/apiAuth'
 import { query } from '@/lib/db'
 import {
   callAI, buildMessages, isLoopbackUrl,
-  AIAction, AIProvider, AISettings, LOCAL_PROVIDER,
+  AIAction, AIProvider, AISettings, LOCAL_PROVIDER, AI_CONTENT_MAX_CHARS,
 } from '@/lib/ai'
 import { NextRequest, NextResponse } from 'next/server'
 import { promptGuardApplies } from '@/lib/accounts'
@@ -25,6 +25,13 @@ async function postHandler(req: NextRequest) {
   const { action, content, context, tone, targetLang, accountId } = body
 
   if (!content?.trim()) return NextResponse.json({ error: 'Missing content' }, { status: 400 })
+  // Before any database or provider work: the ceiling is what bounds the cost of a call.
+  if (content.length + (context?.length ?? 0) > AI_CONTENT_MAX_CHARS) {
+    return NextResponse.json(
+      { error: `Content exceeds ${AI_CONTENT_MAX_CHARS} characters`, limit: AI_CONTENT_MAX_CHARS },
+      { status: 413 }
+    )
+  }
 
   const rows = await query<{
     provider: string

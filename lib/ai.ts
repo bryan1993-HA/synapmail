@@ -28,6 +28,14 @@ export const LOCAL_DETECT_PORTS = [
 export const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]', '::1'] as const
 
 /**
+ * Most text one call may hand to a model (`content` plus `context`, in characters).
+ * Every call is billed to the user's own provider account, and an API key can
+ * repeat it at will: without a ceiling, one key is an open line on that budget.
+ * Generous for mail — a long plain-text thread stays well under it.
+ */
+export const AI_CONTENT_MAX_CHARS = 200_000
+
+/**
  * True when the URL points at THIS machine. Pure and shared by the settings
  * screen and the API so both refuse exactly the same addresses: a remote host
  * would be blocked by the browser as mixed content anyway, and an API key is

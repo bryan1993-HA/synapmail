@@ -7,6 +7,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Une clé API pouvait envoyer à l'assistant un texte de taille illimitée, facturé au compte fournisseur de
+  l'utilisateur** (`app/api/ai/action/route.ts`, `lib/ai.ts`) : `POST /api/ai/action` accepte l'authentification
+  Bearer (portée `ai:use`), et chaque appel est facturé au fournisseur configuré par l'utilisateur — sans plafond sur
+  `content`, une clé était une ligne ouverte sur ce budget, répétable à volonté. `content` + `context` sont désormais
+  refusés au-delà de `AI_CONTENT_MAX_CHARS` (200 000 caractères, large pour un fil de courrier) avec
+  `413 { error, limit }`, avant tout accès à la base ou au fournisseur. La liste de routes Bearer périmée du
+  fichier de contexte agent du dépôt renvoie à `ROUTE_SCOPES` (`lib/apiScopes.ts`), la seule source ; `docs/API.md` et `docs/openapi.json`
+  annoncent le 413. Banc : `scripts/check-ai-content-limit.mjs` (vraie route, clé `ai:use` d'un utilisateur jetable
+  sans assistant configuré — aucun modèle appelé : un corps sous le plafond s'arrête au `400 AI not configured` ;
+  `--negative` rejoue la route sans plafond et doit tomber — 2 assertions).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

@@ -926,7 +926,7 @@ Probes common local network locations (`localhost`, `host.docker.internal`, `oll
 **Response** `{ data: { found: boolean; url: string | null; models: string[] } }`.
 
 ### `POST /api/ai/action` 🔑 Bearer (`ai:use`)
-Runs one AI transformation against arbitrary text, using the caller's configured provider. `400 AI not configured` if `ai_settings` has no row for the user yet.
+Runs one AI transformation against arbitrary text, using the caller's configured provider. `400 AI not configured` if `ai_settings` has no row for the user yet. Every call is billed to the caller's own provider account, so `content` + `context` are capped at **200 000 characters** (`AI_CONTENT_MAX_CHARS`): a larger body is refused with `413 { error, limit }` before any provider is contacted.
 
 **Body**
 ```ts
