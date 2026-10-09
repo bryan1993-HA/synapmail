@@ -7,6 +7,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Un dossier nommé `.` ou `..` partait tel quel vers IMAP, et un sous-dossier dont le nom ne différait
+  de son parent que par la forme Unicode n'était pas reconnu comme enfant** (`lib/folderActions.ts`) :
+  `sanitizeFolderName()` refusait déjà le délimiteur du compte et les caractères de contrôle, mais pas ces deux
+  segments — sur un serveur Maildir (Dovecot, Courier) qui mappe les noms de boîtes sur de vrais chemins, c'est
+  une traversée de répertoire ; ils sont désormais refusés (400) avant tout appel `mailboxCreate`/`mailboxRename`.
+  Et `isDescendant()` comparait les chaînes brutes alors que `samePath()` normalise déjà en NFC (un serveur peut
+  lister un nom décomposé que le clavier produit composé) : le parent pouvait être supprimé en orphelinant
+  l'enfant, et un renommage sautait la réécriture de son cache. Les deux côtés sont normalisés, et
+  `rewritePath()` découpe sur le préfixe normalisé (les deux formes n'ont pas la même longueur).
+  Banc : `scripts/check-folder-actions.mjs` (cas `.`/`..` et NFD/NFC ; `--negative` rejoue l'ancienne règle et
+  doit tomber — 8 assertions de traversée + 4 Unicode).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

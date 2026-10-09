@@ -60,14 +60,19 @@ export function folderCapabilities(ctx: FolderContext): FolderCapabilities {
 
 /**
  * A folder name typed by the user, made safe BEFORE it reaches IMAP: the
- * server delimiter would place a hierarchy in it that the user never asked for, and
- * control characters break the command itself. Returns `null` if the name cannot
- * be accepted: the caller then answers 400, it does not "repair" anything.
+ * server delimiter would place a hierarchy in it that the user never asked for,
+ * control characters break the command itself, and `.` / `..` are directory
+ * traversal on a Maildir server that maps mailbox names onto real paths. Returns
+ * `null` if the name cannot be accepted: the caller then answers 400, it does not
+ * "repair" anything.
  */
 export const FOLDER_NAME_MAX = 255
 
 // eslint-disable-next-line no-control-regex -- that is precisely what we refuse
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/
+
+/** The delimiter is refused inside a name, so a name IS one path segment: only these two traverse. */
+const TRAVERSAL_SEGMENTS = new Set(['.', '..'])
 
 export function sanitizeFolderName(raw: unknown, delimiter: string): string | null {
   if (typeof raw !== 'string') return null
@@ -75,6 +80,7 @@ export function sanitizeFolderName(raw: unknown, delimiter: string): string | nu
   if (!name || name.length > FOLDER_NAME_MAX) return null
   if (CONTROL_CHARS.test(name)) return null
   if (delimiter && name.includes(delimiter)) return null
+  if (TRAVERSAL_SEGMENTS.has(name)) return null
   return name
 }
 
@@ -89,9 +95,14 @@ export function renamedPath(path: string, name: string, delimiter: string): stri
   return cut < 0 ? name : `${path.slice(0, cut)}${delimiter}${name}`
 }
 
-/** True if `child` is filed under `parent`: never true for the folder itself. */
+/**
+ * True if `child` is filed under `parent`: never true for the folder itself. Same
+ * Unicode normalisation as `samePath()`: a server may list the child in NFD while the
+ * parent came from the keyboard in NFC, and a child missed here lets its parent be
+ * deleted (orphan) or skips its cache rewrite on rename.
+ */
 export function isDescendant(child: string, parent: string, delimiter: string): boolean {
-  return child.startsWith(`${parent}${delimiter}`)
+  return child.normalize('NFC').startsWith(`${parent}${delimiter}`.normalize('NFC'))
 }
 
 /**
@@ -101,8 +112,10 @@ export function isDescendant(child: string, parent: string, delimiter: string): 
  * counters, then dead rows. A path outside the subtree comes back intact.
  */
 export function rewritePath(path: string, from: string, to: string, delimiter: string): string {
-  if (path === from) return to
-  return isDescendant(path, from, delimiter) ? to + path.slice(from.length) : path
+  if (samePath(path, from)) return to
+  if (!isDescendant(path, from, delimiter)) return path
+  // Slice on the normalised form: `from` and `path` may differ in length before it.
+  return to + path.normalize('NFC').slice(from.normalize('NFC').length)
 }
 
 /**
