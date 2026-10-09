@@ -18,17 +18,26 @@
  *   node --experimental-strip-types scripts/check-subscriptions.mjs
  *   node --experimental-strip-types scripts/check-subscriptions.mjs --break-boundary
  *   node --experimental-strip-types scripts/check-subscriptions.mjs --transport
+ *   node --experimental-strip-types scripts/check-subscriptions.mjs --negative
  * The second form makes the boundary accept private addresses in a COPY of the
  * decision and EXPECTS the run to fail — a battery that cannot fail proves nothing.
+ * The last form judges the mailto subject the OLD way (trim only, no control-character
+ * filtering) and runs the OLD requester (inactivity timeout, no abort) against the dripping
+ * server; it EXPECTS the header-injection and the socket-release assertions to fall.
  */
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import https from 'node:https'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   MAILTO_SUBJECT,
   ONE_CLICK_BODY,
   ONE_CLICK_CONTENT_TYPE,
   RECENT_MESSAGES_SCANNED,
   decideUrl,
+  defaultRequester,
   groupSubscriptions,
   groupingKey,
   headerValue,
@@ -56,6 +65,7 @@ const ok = label => console.log(`  ok  ${label}`)
 /** Header separator, so a fixture never has to escape it inline. */
 const CRLF = '\r\n'
 const BREAK_BOUNDARY = process.argv.includes('--break-boundary')
+const NEGATIVE = process.argv.includes('--negative')
 
 /** A resolver that answers from a table — no DNS, no network. */
 const resolverFor = table => async hostname => {
@@ -116,6 +126,33 @@ assert.equal(mailtoSubject(uris.mailto[0]), 'unsubscribe abc')
 assert.equal(mailtoAddress('mailto:not-an-address'), null)
 assert.equal(mailtoAddress('mailto:a@b.com,c@d.com'), null)
 ok('a mailto target is one validated address, its subject decoded')
+
+// The subject is sender-controlled and becomes a header of a message sent with the
+// READER's SMTP credentials: an encoded CRLF must never survive into it. NEGATIVE
+// (`--negative`): the subject is judged the OLD way, `.trim()` only — MUST go red.
+const subjectOf = NEGATIVE
+  ? uri => new URLSearchParams(uri.split('?')[1] ?? '').get('subject')?.trim() || undefined
+  : mailtoSubject
+/** Under `--negative`, the assertions that fell — each old rule must make its own fall. */
+const fell = []
+const expectFall = (label, run) => {
+  try {
+    run()
+  } catch (err) {
+    if (!NEGATIVE) throw err
+    console.log(`  FAIL ${label}\n       ${err.message.split('\n')[0]}`)
+    fell.push(label)
+  }
+}
+const injected = 'mailto:leave@example.com?subject=unsubscribe%0d%0aBcc:%20victim@example.net%0aX-Evil:%201'
+expectFall('subject: control characters', () => {
+  const subject = subjectOf(injected)
+  assert.doesNotMatch(subject, /[\r\n\u0000-\u001f\u007f]/, `control characters survived into the subject: ${JSON.stringify(subject)}`)
+  assert.equal(subject, 'unsubscribe Bcc: victim@example.net X-Evil: 1')
+  assert.equal(subjectOf('mailto:leave@example.com?subject=%0d%0a'), undefined, 'a subject made only of control characters is no subject')
+  assert.equal(subjectOf('mailto:leave@example.com?subject=unsubscribe'), 'unsubscribe')
+  ok('a mailto subject carries no control character, so it cannot end the Subject header')
+})
 
 assert.deepEqual(parseAddress('Example News <News@Example.com>'), {
   name: 'Example News',
@@ -697,6 +734,92 @@ async function checkHistory(BASE, pool, ownAccountId, ownKey, makeKeyFor) {
     if (theirKey) await theirKey.drop()
   }
   return failures
+}
+
+// ---------------------------------------------------------------------------
+console.log('one-click socket — the deadline frees the connection')
+
+// A server named in a List-Unsubscribe header can drip one byte every couple of
+// seconds: an INACTIVITY timeout never fires, and a deadline that only drops
+// the promise leaves the socket open on our side for as long as the drip lasts.
+// The shipped requester must close it when its deadline passes. Real TLS on the
+// loopback (the requester speaks https only), nothing leaves this machine.
+// NEGATIVE (`--negative`): the OLD requester — inactivity timeout, no abort —
+// raced against the OLD deadline; its socket must be seen still open.
+const SOCKET_DEADLINE_MS = 600
+const DRIP_MS = SOCKET_DEADLINE_MS / 6
+const RELEASE_MARGIN_MS = 300
+const certDir = mkdtempSync(join(tmpdir(), 'check-subscriptions-'))
+execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=localhost',
+  '-keyout', join(certDir, 'key.pem'), '-out', join(certDir, 'cert.pem')], { stdio: 'ignore' })
+const cert = readFileSync(join(certDir, 'cert.pem'))
+const drip = { opened: 0, closed: 0 }
+const dripServer = https.createServer({ key: readFileSync(join(certDir, 'key.pem')), cert })
+dripServer.on('secureConnection', socket => {
+  drip.opened += 1
+  socket.on('close', () => { drip.closed += 1 })
+  socket.write('HTTP/1.1 200 OK\r\nX-Slow: ')
+  const timer = setInterval(() => (socket.destroyed ? clearInterval(timer) : socket.write('a')), DRIP_MS)
+})
+await new Promise(r => dripServer.listen(0, '127.0.0.1', r))
+// Trust the bench's own certificate only — never a global "verify nothing" switch —
+// and only for this battery: the `--transport` arm below needs the real roots back.
+const trustedRoots = https.globalAgent.options.ca
+https.globalAgent.options.ca = [cert]
+const dripUrl = new URL(`https://localhost:${dripServer.address().port}/u`)
+const loopback = { address: '127.0.0.1', family: 4 }
+const settle = ms => new Promise(r => setTimeout(r, ms))
+
+// The pre-fix requester and deadline, verbatim in shape: `timeout` is an
+// inactivity timer, and the race only rejects — nobody destroys the request.
+const legacySocketRequester = ({ url, address, body, contentType, timeoutMs }) =>
+  new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        protocol: url.protocol, hostname: url.hostname, port: url.port || 443, path: `${url.pathname}${url.search}`,
+        method: 'POST', headers: { 'Content-Type': contentType, 'Content-Length': Buffer.byteLength(body) },
+        timeout: timeoutMs,
+        lookup: (_h, opts, cb) => (opts?.all ? cb(null, [address]) : cb(null, address.address, address.family)),
+      },
+      res => { res.resume(); resolve({ status: res.statusCode ?? 0 }) }
+    )
+    req.on('timeout', () => req.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })))
+    req.on('error', reject)
+    req.end(body)
+  })
+const legacyDeadline = (promise, ms) =>
+  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })), ms))])
+
+const requesterUnderTest = NEGATIVE
+  ? options => legacyDeadline(legacySocketRequester(options), options.timeoutMs)
+  : defaultRequester
+const dripStarted = Date.now()
+const dripOutcome = await requesterUnderTest({
+  url: dripUrl, address: loopback, body: ONE_CLICK_BODY, contentType: ONE_CLICK_CONTENT_TYPE, timeoutMs: SOCKET_DEADLINE_MS,
+}).then(r => ({ status: r.status }), err => ({ code: err.code }))
+const dripElapsedMs = Date.now() - dripStarted
+assert.equal(dripOutcome.code, 'ETIMEDOUT', `a dripping server must end as a timeout, got ${JSON.stringify(dripOutcome)}`)
+assert.ok(
+  dripElapsedMs < SOCKET_DEADLINE_MS + RELEASE_MARGIN_MS,
+  `the deadline is a wall clock: ${dripElapsedMs} ms for a ${SOCKET_DEADLINE_MS} ms deadline while the server drips every ${DRIP_MS} ms`
+)
+ok(`a server dripping every ${DRIP_MS} ms is given up as a timeout after ${dripElapsedMs} ms (deadline ${SOCKET_DEADLINE_MS} ms)`)
+await settle(RELEASE_MARGIN_MS)
+expectFall('socket: released at the deadline', () => {
+  assert.equal(drip.opened, 1, `${drip.opened} connection(s) opened for one request`)
+  assert.equal(drip.closed, 1, `the connection the deadline abandoned is still open ${RELEASE_MARGIN_MS} ms later (server saw ${drip.closed} close)`)
+  ok('the connection is closed on the server side too: the deadline destroyed the socket, not only the promise')
+})
+dripServer.closeAllConnections()
+await new Promise(r => dripServer.close(r))
+https.globalAgent.options.ca = trustedRoots
+rmSync(certDir, { recursive: true, force: true })
+
+if (NEGATIVE) {
+  const expected = ['subject: control characters', 'socket: released at the deadline']
+  assert.deepEqual(fell, expected, `SILENT NEGATIVE CONTROL: only ${JSON.stringify(fell)} fell of ${JSON.stringify(expected)} — the bench measures nothing`)
+  console.log(`negative control: ${fell.length} assertion(s) fell, as expected`)
+  process.exit(0)
 }
 
 console.log('\nsubscriptions: all checks passed')

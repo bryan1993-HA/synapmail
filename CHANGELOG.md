@@ -7,6 +7,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Le sujet d'un `mailto:` de désabonnement partait sans filtrage, et une connexion de désabonnement en un clic
+  pouvait rester ouverte après son délai** (`lib/subscriptions.ts`) : le paramètre `subject=` vient d'un en-tête
+  `List-Unsubscribe` écrit par l'expéditeur du message, et il devient le `Subject` d'un courriel envoyé avec les
+  identifiants SMTP du lecteur — un CR/LF survivant au décodage de l'URL aurait clos cet en-tête et ouvert un en-tête
+  au choix de l'expéditeur. `mailtoSubject()` replie désormais les caractères de contrôle en une espace, au même
+  niveau d'exigence que `mailtoAddress()`. Côté réseau, le client HTTPS ne posait qu'un délai d'inactivité, et
+  `withDeadline()` ne faisait que rejeter la promesse : un serveur qui goutte un octet toutes les deux secondes
+  ne déclenchait jamais l'inactivité, et chaque appel abandonné laissait sa connexion ouverte. Le délai est
+  maintenant une horloge murale (`AbortSignal.timeout`) qui détruit la socket quand elle sonne, quoi que le serveur
+  envoie ; l'abandon ressort en `ETIMEDOUT`, donc l'appelant lit toujours « timeout ».
+  Banc : `scripts/check-subscriptions.mjs` (cas d'injection `%0d%0a` ; vrai serveur TLS local qui goutte un octet
+  toutes les 100 ms, le serveur doit voir la connexion se fermer dans le délai ; `--negative` rejoue l'ancienne
+  règle et l'ancien client et doit tomber — 2 assertions).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

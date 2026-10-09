@@ -21,12 +21,15 @@ Classé par sévérité. Cocher au fur et à mesure.
   gros et répété — épuisement de quota / coût, sans rate-limiting existant. Fix : soit repasser la route
   en session-only, soit l'ajouter explicitement à la liste documentée + plafonner la taille de `content`.
 
-- [ ] **`lib/subscriptions.ts` — `mailtoSubject()`** ne fait qu'un `.trim()` sur le `subject=` d'un lien
+- [x] **`lib/subscriptions.ts` — `mailtoSubject()`** ne fait qu'un `.trim()` sur le `subject=` d'un lien
   `mailto:` extrait d'un header `List-Unsubscribe` **contrôlé par l'expéditeur du mail**, avant de le
   passer à `sendMail()` avec les identifiants SMTP **du compte de la victime**. `mailtoAddress()` valide
   strictement l'adresse par regex mais pas le subject. Risque d'injection d'en-tête SMTP si une séquence
   CRLF encodée survit à l'encodage nodemailer. Fix : filtrer les caractères de contrôle (CR/LF) sur
-  `mailtoSubject()` comme c'est fait pour `mailtoAddress()`.
+  `mailtoSubject()` comme c'est fait pour `mailtoAddress()`. — Fixed: every control character
+  (`\u0000-\u001f`, `\u007f`, CR/LF included) is folded to one space after URL decoding, so the subject can
+  never end the `Subject:` line. Bench: `scripts/check-subscriptions.mjs` (`--negative` replays the trim-only
+  rule and must go red).
 
 ## 🟠 Bugs qui contredisent des corrections annoncées par le PR
 
@@ -52,11 +55,15 @@ Classé par sévérité. Cocher au fur et à mesure.
 
 ## 🟡 Bugs réels, sévérité moyenne
 
-- [ ] **`lib/subscriptions.ts` — `withDeadline()`** ne détruit jamais la socket sous-jacente quand le
+- [x] **`lib/subscriptions.ts` — `withDeadline()`** ne détruit jamais la socket sous-jacente quand le
   deadline gagne la course contre la promesse (`req.destroy()` jamais appelé). Un serveur malveillant
   cité dans un `List-Unsubscribe` peut faire fuir des connexions ouvertes en envoyant un octet toutes les
   ~2s (empêche le timeout d'inactivité de se déclencher) pendant que le deadline applicatif de 3s expire
-  côté serveur.
+  côté serveur. — Fixed: `defaultRequester` carries `AbortSignal.timeout(timeoutMs)` instead of the
+  inactivity `timeout`, so the socket is destroyed at the wall-clock deadline whatever the server drips;
+  the abort is reported as `ETIMEDOUT` like before. `withDeadline()` stays as the caller's guard against a
+  requester that never settles. Bench: `scripts/check-subscriptions.mjs` (real TLS drip server on the
+  loopback; `--negative` replays the inactivity-timeout requester and must see the socket still open).
 
 - [ ] **`components/layout/AccountAvatar.tsx`** — le switch de compte actif écrit `/api/settings` sans
   `mutate()` du cache SWR partagé (contrairement au pattern documenté dans `CLAUDE.md` "UI state
