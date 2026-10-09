@@ -29,6 +29,7 @@
  *   node scripts/check-api-docs.mjs --break=ref       (a $ref that resolves to nothing)
  *   node scripts/check-api-docs.mjs --break=servers  (the contract served with its disk servers)
  *   node scripts/check-api-docs.mjs --break=searchscope (a search scope the doc never names)
+ *   node scripts/check-api-docs.mjs --break=stream    (the contract silent on the NDJSON stream)
  * The `--break` forms damage a COPY of one input and EXPECT the run to fail: a
  * battery that cannot fail proves nothing.
  */
@@ -54,7 +55,8 @@ registerHooks({
     return next(spec, ctx)
   },
 })
-const { SEARCH_SCOPES, SWEEP_STOP_REASONS } = await import(new URL('../lib/search.ts', import.meta.url).href)
+const { SEARCH_SCOPES, STREAM_CONTENT_TYPE, STREAM_PARAM, SWEEP_STOP_REASONS } =
+  await import(new URL('../lib/search.ts', import.meta.url).href)
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const APP_DIR = join(ROOT, 'app')
@@ -488,6 +490,17 @@ const contract = JSON.parse(
     ? readFileSync(join(ROOT, OPENAPI_FILE), 'utf8').replace('#/components/schemas/Error', '#/components/schemas/Nowhere')
     : readFileSync(join(ROOT, OPENAPI_FILE), 'utf8'),
 )
+// The stream is an OPT-IN of the caller (PR-29 follow-up): a key that never sends
+// `stream=1` keeps the single JSON object. So the contract must name the parameter
+// and the NDJSON answer it switches to — a generated client that does not know
+// the parameter cannot ask for it, and one that reads only `application/json`
+// would crash on `json()` when it does. `--break=stream` hides both.
+if (BREAK === 'stream') {
+  const search = contract.paths['/api/messages/search'].get
+  search.parameters = search.parameters.filter(p => p.name !== STREAM_PARAM)
+  delete search.responses['200']
+  search.responses['200'] = { $ref: '#/components/responses/MessageList' }
+}
 
 /** `/api/messages/{id}` in the contract is `/api/messages/[id]` in the tree. */
 const codePathOf = contractPath => contractPath.replace(/\{(\w+)\}/g, '[$1]')
@@ -522,6 +535,40 @@ const strangers = Object.keys(operations)
   .map(key => `${key}: the contract describes it, ${code[key] ? `${code[key].file} enforces ${code[key].mode}` : 'no route exports it'}`)
 check(strangers.length === 0, 'the contract describes nothing a key cannot call', strangers.join('\n      '))
 
+/** What a `#/…` reference points at inside the contract, or `undefined`. */
+const resolveRef = ref =>
+  ref.startsWith('#/')
+    ? ref.slice(2).split('/').reduce((node, segment) => (node == null ? undefined : node[segment]), contract)
+    : undefined
+const resolve = ref => resolveRef(ref) !== undefined
+/** The node itself, or the node its `$ref` points at. */
+const resolveNode = node => (node?.$ref ? resolveRef(node.$ref) : node)
+
+// ---- The search stream is the caller's choice, and the contract says so -----
+const streamMediaType = STREAM_CONTENT_TYPE.split(';')[0].trim()
+const searchOp = operations['GET /api/messages/search']
+const searchParams = (searchOp?.parameters ?? []).map(resolveNode).filter(Boolean)
+const streamParam = searchParams.find(p => p.name === STREAM_PARAM)
+check(!!streamParam, `the contract names \`${STREAM_PARAM}\` as a parameter of the search route`)
+check(
+  (streamParam?.description ?? '').includes(streamMediaType),
+  `that parameter says the answer becomes ${streamMediaType}`,
+)
+const scopeParam = searchParams.find(p => p.name === 'scope')
+const scopesMissing = SEARCH_SCOPES.filter(scope => !(scopeParam?.schema?.enum ?? []).includes(scope))
+check(scopesMissing.length === 0, 'the contract enumerates every search scope lib/search.ts serves', scopesMissing.join(', '))
+const searchAnswer = resolveNode(searchOp?.responses?.['200'])
+check(
+  !!searchAnswer?.content?.[streamMediaType] && !!searchAnswer?.content?.['application/json'],
+  `the search answer is described as application/json AND ${streamMediaType}`,
+  JSON.stringify(Object.keys(searchAnswer?.content ?? {})),
+)
+check(
+  source(join('app', 'api', 'messages', 'search', 'route.ts')).includes('STREAM_CONTENT_TYPE') &&
+    !source(join('app', 'api', 'messages', 'search', 'route.ts')).includes(streamMediaType),
+  'the route announces the stream through STREAM_CONTENT_TYPE, never a retyped media type',
+)
+
 // ---- The contract is structurally sound, without a new dependency -----------
 check(/^3\.1\.\d+$/.test(contract.openapi ?? ''), `the contract declares OpenAPI 3.1 (got ${contract.openapi})`)
 check(
@@ -553,13 +600,6 @@ const refsOf = node =>
   node && typeof node === 'object'
     ? Object.entries(node).flatMap(([key, value]) => (key === '$ref' ? [value] : refsOf(value)))
     : []
-
-const resolve = ref =>
-  ref.startsWith('#/') &&
-  ref
-    .slice(2)
-    .split('/')
-    .reduce((node, segment) => (node == null ? undefined : node[segment]), contract) !== undefined
 
 const danglingRefs = [...new Set(refsOf(contract))].filter(ref => !resolve(ref)).sort()
 check(danglingRefs.length === 0, 'every $ref of the contract resolves', danglingRefs.join('\n      '))

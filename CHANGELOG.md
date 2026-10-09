@@ -7,6 +7,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Le contrat OpenAPI de la recherche ne décrivait ni `scope`, ni `stream`, ni la réponse NDJSON** (`docs/openapi.json`,
+  `docs/API.md`, `lib/search.ts`, `app/api/messages/search/route.ts`) : mesuré, le flux n'est envoyé que si l'appelant
+  passe `stream=1` lui-même ; le défaut était dans la doc (« contrat machine inchangé ») et dans le contrat, qui ne
+  permettait ni de demander le flux ni de le lire. Le contrat énumère les trois portées et décrit `stream=1` et son type
+  `application/x-ndjson`, écrit une seule fois (`STREAM_CONTENT_TYPE`). Au passage, la recherche « tous les dossiers » en
+  un coup parcourt la même liste classée que le flux (`listFoldersRanked()`, sans les dossiers `\Noselect` ni vides) et
+  rend par le même `streamedMessages()`. Bancs : `scripts/check-api-docs.mjs` (`--break=stream`) et
+  `scripts/check-search-single-shot.mjs` (`--negative`).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

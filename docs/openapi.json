@@ -884,8 +884,8 @@
           "Messages"
         ],
         "operationId": "searchMessages",
-        "summary": "Server-side search in one folder",
-        "description": "Subject, sender and body, through the IMAP server's own SEARCH. Under two characters the answer is an empty list, not an error. NON-STANDARD ENVELOPE: `{ messages }`, not `{ data }`.",
+        "summary": "Server-side search in one folder, every folder, or every mailbox",
+        "description": "From, to, cc and subject, through the IMAP server's own SEARCH — not the body. Under two characters the answer is an empty list, not an error. NON-STANDARD ENVELOPE: `{ messages, total, fields }`, not `{ data }`. `scope` widens the search; `stream=1` (scopes `all` and `accounts` only) turns the answer into NDJSON, one line per folder — read the `Content-Type` before calling `json()` on the body.",
         "parameters": [
           {
             "name": "q",
@@ -902,11 +902,36 @@
           },
           {
             "$ref": "#/components/parameters/AccountQuery"
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`folder`: the one `folder` of the one mailbox. `all`: every folder of that mailbox. `accounts`: every folder of every mailbox the key reaches — slow without `stream=1` (up to 45 s), and the answer then carries `complete`, which the caller MUST read: `false` means folders were left unseen, not \"nothing found\". An unknown value falls back to `folder`.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "folder",
+                "all",
+                "accounts"
+              ],
+              "default": "folder"
+            }
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "description": "`1` under scope `all` or `accounts`: the answer is `application/x-ndjson`, one JSON object per folder as it completes, each with its own `aiSafety` prefix when its mailbox's guard is on. Ignored under scope `folder`. Omit it to keep the single JSON object.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/MessageList"
+            "$ref": "#/components/responses/SearchResult"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -2943,6 +2968,67 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "SearchResult": {
+        "description": "One JSON object, or — with `stream=1` — one JSON object per line, each a folder's share of the results. Same fields on both; the streamed line adds `folder`, and under scope `accounts` `accountId`, `accountEmail`, `accounts`. A final `{ unreachable: [...] }` line names the mailboxes that could not be opened.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "messages",
+                "total",
+                "fields"
+              ],
+              "properties": {
+                "aiSafety": {
+                  "$ref": "#/components/schemas/AiSafety"
+                },
+                "messages": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Message"
+                  }
+                },
+                "total": {
+                  "type": "integer",
+                  "description": "Real matches; more than `messages.length` when the 200-per-folder cap was hit."
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The header fields the search covered."
+                },
+                "complete": {
+                  "type": "boolean",
+                  "description": "Scope `accounts` without a stream only: `false` means the sweep stopped early — see `stoppedBecause`."
+                },
+                "stoppedBecause": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "budget",
+                      "unreachable"
+                    ]
+                  }
+                },
+                "error": {
+                  "type": "string",
+                  "description": "Present with an empty list when the mail server refused."
+                }
+              }
+            }
+          },
+          "application/x-ndjson": {
+            "schema": {
+              "type": "string",
+              "description": "Newline-delimited JSON: one object per folder covered, as it completes."
             }
           }
         }
