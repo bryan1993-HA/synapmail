@@ -7,6 +7,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Une sélection de transfert acceptait l'uid `0` et les uids complétés de zéros** (`lib/forward.ts`) : le motif
+  `/^\d+$/` devient `/^[1-9]\d*$/` (`0` n'est pas un uid, `007` n'est l'écriture d'aucun serveur). Banc :
+  `scripts/check-forward-decision.mjs` refuse `0` et `007` (rouge avec l'ancien motif).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

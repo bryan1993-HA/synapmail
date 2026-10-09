@@ -119,7 +119,9 @@ Classé par sévérité. Cocher au fur et à mesure.
   qui suit, mais fragile — un futur correctif qui ajoute `{uid:true}` à un seul des deux appels casserait
   silencieusement la pagination filtrée).
 - `lib/forward.ts` : `UID_PATTERN = /^\d+$/` accepte les uid avec zéros en tête (`"007"`), jamais générés
-  par l'app aujourd'hui mais pas garanti pour un futur appelant de `parseForwardedMessages`.
+  par l'app aujourd'hui mais pas garanti pour un futur appelant de `parseForwardedMessages`. — Fixed:
+  `/^[1-9]\d*$/` (no `0`, no leading zero); `scripts/check-forward-decision.mjs` refuses `0` and `007`
+  (goes red with the old pattern).
 - `app/layout.tsx` : `readBranding()` appelé deux fois par requête (une fois par `generateMetadata()`,
   une fois par `RootLayout()`) — un aller-retour DB évitable, pas un bug.
 - `lib/subscriptions.ts` — `isPrivateAddress()` ne décode pas les encodages 6to4/NAT64 d'IPv4 dans une
