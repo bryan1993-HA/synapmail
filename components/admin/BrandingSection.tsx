@@ -68,15 +68,15 @@ export function BrandingSection() {
 
   const [name, setName] = useState<string | null>(null)
   const [file, setFile] = useState<File | null>(null)
-  // URL d'aperçu du fichier choisi : créée UNE fois par choix et révoquée à la
-  // suivante, sinon chaque rendu fabriquerait un blob de plus.
-  const [filePreview, setFilePreview] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   /** Survol d'un fichier au-dessus de la zone : le seul retour visuel d'un glisser-déposer. */
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  // The picked file's preview is DRAWN here from its decoded pixels: no URL is ever
+  // derived from the file, so nothing file-derived reaches a `src` attribute.
+  const previewRef = useRef<HTMLCanvasElement>(null)
 
   // Tant que l'administrateur n'a rien tapé, le champ montre ce qui est enregistré.
   const nameValue = name ?? branding?.appName ?? ''
@@ -113,16 +113,26 @@ export function BrandingSection() {
     }
   }
 
-  // A file whose declared type is not in the list gets no preview URL at all:
-  // only an accepted file ever reaches `createObjectURL`.
-  const pickFile = (next: File | null) => {
-    const refused = next ? faviconTypeError(next.type) : null
+  // A file is kept only if its declared type is in the list AND the browser can
+  // decode it; a file that fails either gets no preview, just the closest error.
+  const pickFile = async (next: File | null) => {
+    let refused = next ? faviconTypeError(next.type) : null
+    let bitmap: ImageBitmap | null = null
+    if (next && !refused) {
+      try {
+        bitmap = await createImageBitmap(next)
+      } catch {
+        refused = BRANDING_ERRORS.badType
+      }
+    }
     const accepted = refused ? null : next
+    const canvas = previewRef.current?.getContext('2d')
+    canvas?.clearRect(0, 0, FAVICON_PREVIEW, FAVICON_PREVIEW)
+    if (bitmap) {
+      canvas?.drawImage(bitmap, 0, 0, FAVICON_PREVIEW, FAVICON_PREVIEW)
+      bitmap.close()
+    }
     setError(refused ? t(`errors.${refused}`) : null)
-    setFilePreview(previous => {
-      if (previous) URL.revokeObjectURL(previous)
-      return accepted ? URL.createObjectURL(accepted) : null
-    })
     setFile(accepted)
   }
 
@@ -199,15 +209,26 @@ export function BrandingSection() {
               dragging ? 'border-[color:var(--synap-account)] bg-muted/50' : 'border-border hover:bg-muted/30',
             )}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={filePreview ?? iconSrc}
-              alt={t('preview')}
+            {/* One preview at a time: the picked file's pixels, or else the saved icon. */}
+            <canvas
+              ref={previewRef}
+              role="img"
+              aria-label={t('preview')}
               width={FAVICON_PREVIEW}
               height={FAVICON_PREVIEW}
-              style={{ width: FAVICON_PREVIEW, height: FAVICON_PREVIEW }}
-              className="shrink-0"
+              className={cn('shrink-0', !file && 'hidden')}
             />
+            {!file && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={iconSrc}
+                alt={t('preview')}
+                width={FAVICON_PREVIEW}
+                height={FAVICON_PREVIEW}
+                style={{ width: FAVICON_PREVIEW, height: FAVICON_PREVIEW }}
+                className="shrink-0"
+              />
+            )}
             <span className="min-w-0">
               <span className="block truncate text-xs text-foreground">{file?.name ?? t('iconDrop')}</span>
               <span className="mt-0.5 block text-[11px] text-muted-foreground">{t('iconHint')}</span>

@@ -11,12 +11,15 @@
  *
  * The last section covers the client side of the same boundary (CodeQL on PR #30:
  * a picked file's object URL flowed straight into `<img src>`): the admin screen's
- * pick handler refuses a file whose declared type is not in `FAVICON_TYPES` and
- * creates no preview URL for it; the field's `accept=` is read from that same list.
+ * pick handler refuses a file whose declared type is not in `FAVICON_TYPES`, the
+ * field's `accept=` is read from that same list, and the preview of a picked file
+ * is DRAWN into a canvas from its decoded pixels -- no URL is ever derived from the
+ * file, so the screen holds no `createObjectURL` and no file-derived `src`.
  *
- * NEGATIVE CONTROL (`--negative`): the pick is judged the OLD way — every declared
- * type lets the file through. The bench MUST then go red: that is what shows the
- * assertion sees the gate, not just the happy path.
+ * NEGATIVE CONTROL (`--negative`): the pick is judged the OLD way -- every declared
+ * type lets the file through -- and the old URL sink is spliced back into the screen
+ * source. The bench MUST then go red: that is what shows the assertions see the gate
+ * and the sink, not just the happy path.
  *
  * Exit 0 when every case holds, 1 on the first mismatch.
  */
@@ -129,11 +132,24 @@ check('an HTML pick -> error, NO preview', pick({ name: 'x.html', type: 'text/ht
 check('a typeless pick -> error, NO preview', pick({ name: 'x', type: '' }), { error: BRANDING_ERRORS.badType, preview: null })
 
 // The screen must wire that list and that gate, not restate them.
-const screen = readFileSync(new URL('../components/admin/BrandingSection.tsx', import.meta.url), 'utf8')
+const shipped = readFileSync(new URL('../components/admin/BrandingSection.tsx', import.meta.url), 'utf8')
+// Under --negative the preview goes back through a URL, exactly as before b75ed22.
+const screen = NEGATIVE
+  ? shipped.replace('src={iconSrc}', 'src={URL.createObjectURL(accepted) ?? iconSrc}')
+  : shipped
 check('accept= is read from FAVICON_TYPES', /accept=\{FAVICON_TYPES\.join\(','\)\}/.test(screen), true)
 check('no image type is retyped in the screen', /['"]image\//.test(screen), false)
 check('the pick handler calls faviconTypeError', /faviconTypeError\(next\.type\)/.test(screen), true)
-check('createObjectURL only ever sees the accepted file', /createObjectURL\(accepted\)/.test(screen), true)
+
+console.log('== picked file: previewed from its pixels, never through a URL ==')
+// CodeQL kept the alert after the type gate alone: the file -> object URL -> `src`
+// flow was still there. Now the only `src` left is the saved icon's server URL.
+check('no object URL is ever created', /createObjectURL|revokeObjectURL/.test(screen), false)
+check('no file-derived src', /src=\{(?!iconSrc\})/.test(screen), false)
+check('the picked file is decoded with createImageBitmap', /createImageBitmap\(next\)/.test(screen), true)
+check('the decoded bitmap is drawn into the canvas, at the preview size', /drawImage\(bitmap, 0, 0, FAVICON_PREVIEW, FAVICON_PREVIEW\)/.test(screen), true)
+check('the bitmap is released after drawing', /bitmap\.close\(\)/.test(screen), true)
+check('an undecodable file falls back to the existing type error', /catch \{\s*refused = BRANDING_ERRORS\.badType/.test(screen), true)
 for (const code of Object.values(BRANDING_ERRORS)) {
   for (const locale of ['en', 'fr', 'zh']) {
     const messages = JSON.parse(readFileSync(new URL(`../locales/${locale}.json`, import.meta.url), 'utf8'))
