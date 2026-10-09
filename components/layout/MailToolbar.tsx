@@ -24,8 +24,8 @@ const MENU_ACTIONS = new Set<MailActionName>(['setFlag', 'moveTo'])
 /**
  * Groupe que le header rend AVANT « Nouveau message » depuis le lot H3c (« Relever,
  * faut qu'il soit avant »). Il sort de la barre d'outils mais reste défini dans
- * `MAIL_TOOLBAR_GROUPS` : ni son icône ni son libellé ne sont recopiés, et le menu
- * « … » continue de le lister en tête.
+ * `MAIL_TOOLBAR_GROUPS` : ni son icône ni son libellé ne sont recopiés. Always
+ * visible in the header, it never overflows, so the « … » menu never lists it.
  */
 const LEAD_GROUP = 0
 
@@ -310,7 +310,7 @@ export function MailToolbar({ shown = true }: ReservedProps) {
 
   const hiddenSet = useMemo(() => new Set(hidden), [hidden])
   // Le groupe de tête est rendu par le header (MailToolbarLead) : la barre ne le
-  // rend pas une seconde fois, mais le menu « … » le liste toujours en premier.
+  // rend pas une seconde fois.
   const inBar = MAIL_TOOLBAR_GROUPS.map((items, i) => ({ items, i })).filter(g => g.i !== LEAD_GROUP)
   const visible = inBar.filter(g => !hiddenSet.has(g.i))
   const overflowed = inBar.filter(g => hiddenSet.has(g.i))
@@ -386,10 +386,12 @@ export function MailToolbar({ shown = true }: ReservedProps) {
               data-mail-toolbar-more-menu
               className={cn(MENU_BOX, 'left-1/2 flex w-48 -translate-x-1/2 flex-col items-stretch')}
             >
-              {MAIL_TOOLBAR_GROUPS.map((items, index) => (
+              {/* Only the groups that actually left the bar: a group still
+                  visible inline is never listed a second time here. */}
+              {overflowed.map((group, index) => (
                 <ToolbarGroup
-                  key={index}
-                  items={items}
+                  key={group.i}
+                  items={group.items}
                   first={index === 0}
                   openMenu={openMenu}
                   setOpenMenu={setOpenMenu}
