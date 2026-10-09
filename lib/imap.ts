@@ -169,11 +169,12 @@ export async function listMessages(
       const reversed = [...allSeqs].reverse()
       pageSeqs = reversed.slice((page - 1) * perPage, page * perPage) as number[]
     }
-    const pageUids = pageSeqs
-
     const messages: Message[] = []
-    if (pageUids.length > 0) {
-      for await (const msg of client.fetch(pageUids as unknown as string, {
+    if (pageSeqs.length > 0) {
+      // Both branches above produce SEQUENCE numbers, and this range is read as such:
+      // `{ uid: true }` must be added to the SEARCH and to this fetch's options together,
+      // or never — adding it to one alone silently breaks the filtered pagination.
+      for await (const msg of client.fetch(pageSeqs as unknown as string, {
         uid: true, flags: true, envelope: true, bodyStructure: true, internalDate: true,
         size: true,
         headers: ['list-unsubscribe', 'x-priority'],

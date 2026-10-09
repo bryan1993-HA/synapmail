@@ -98,26 +98,33 @@ Classé par sévérité. Cocher au fur et à mesure.
 ## Mineur / dette documentaire (non bloquant)
 
 - `docs/API.md` non mis à jour pour les nouveaux paramètres de recherche (`scope`/`stream`/`total`/`fields`)
-  ni pour les 2 routes de partage de compte de v1.7.0 (déjà signalé par l'auteur du PR).
+  ni pour les 2 routes de partage de compte de v1.7.0 (déjà signalé par l'auteur du PR). — Done: search
+  section (`scope`/`stream`/`total`/`fields`, coverage) in `a59f315`, the three share routes in `cfe3210`;
+  `scripts/check-api-docs.mjs` keeps the doc and `lib/search.ts` from drifting.
 - `app/api/accounts/[id]/shares/[shareId]/route.ts` : DELETE permet maintenant à l'invité de révoquer
   son propre partage (self-leave) — contredit la phrase de `CLAUDE.md` "the shares routes themselves stay
   strictly owner-only", à mettre à jour (ce n'est pas une faille, la requête filtre bien sur
-  `invitee_user_id`).
+  `invitee_user_id`). — Done: the sentence now names the recipient's self-leave on `DELETE`.
 - Strings encore en dur en français dans `ThreadPane.tsx` (nouvel état d'erreur) et restes dans
   `AICompose.tsx`/`AISettingsClient.tsx` malgré la convention i18n du projet.
-- `lib/db.ts` : `withTransaction()` ajouté mais jamais utilisé (code mort).
+- `lib/db.ts` : `withTransaction()` ajouté mais jamais utilisé (code mort). — Not present: no
+  `withTransaction` in `lib/db.ts` on this branch nor in `c935b4e` (`git log -S withTransaction` finds
+  only this note); nothing to remove.
 - `PERMISSION_KEYS`/`EMPTY_PERMISSIONS` dupliqués entre panneaux de partage de compte (pas propre à ce
-  PR mais aggravé par lui).
+  PR mais aggravé par lui). — Done: one panel left (`AccountSharesPanel.tsx`), `EMPTY_PERMISSIONS` no
+  longer exists anywhere (`git grep`).
 - Recherche : logique de tri/plafond dupliquée entre branche streaming et branche single-shot ; la
   branche `scope=all` non-streamée utilise `listFolders()` au lieu de `listFoldersRanked()` (ne filtre
   pas les dossiers `\Noselect`/vides — gaspille des allers-retours IMAP).
 - `components/settings/AccountColorPicker.tsx` : double commit (blur puis clic "Automatique") — deux
   PATCH pour un seul geste utilisateur, sans conséquence visible autre qu'un flash de couleur.
 - `components/layout/Omnibar.tsx` : les comptes dans la palette de commandes (Cmd/Ctrl+K) affichent
-  toujours `unread={0}` au lieu du vrai compteur.
+  toujours `unread={0}` au lieu du vrai compteur. — Done in `19bb4ec` (`unread={acc.unreadCount ?? 0}`).
 - `lib/imap.ts` : `search()` appelé sans `{uid:true}` dans la branche filtrée (cohérent avec le `fetch`
   qui suit, mais fragile — un futur correctif qui ajoute `{uid:true}` à un seul des deux appels casserait
-  silencieusement la pagination filtrée).
+  silencieusement la pagination filtrée). — Settled: the range cannot become UIDs (the `all` branch derives
+  sequence numbers from `mailbox.exists` without any SEARCH), so the misleading `pageUids` alias is gone and
+  the fetch names the coupling in one comment. No behaviour change.
 - `lib/forward.ts` : `UID_PATTERN = /^\d+$/` accepte les uid avec zéros en tête (`"007"`), jamais générés
   par l'app aujourd'hui mais pas garanti pour un futur appelant de `parseForwardedMessages`.
 - `app/layout.tsx` : `readBranding()` appelé deux fois par requête (une fois par `generateMetadata()`,

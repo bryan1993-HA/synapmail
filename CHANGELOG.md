@@ -7,6 +7,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **Suivi de la PR #29 : les points mineurs déjà réglés sont consignés** (`docs/PR-29-followups.md`, `CLAUDE.md`,
+  `lib/imap.ts`) : chaque point mineur de la liste porte le commit qui l'a réglé, ou la raison pour laquelle il n'y avait
+  rien à faire ; `CLAUDE.md` nomme le départ volontaire d'un destinataire de partage (`DELETE`) ; dans `listMessages`,
+  l'alias trompeur `pageUids` disparaît et un commentaire nomme le couplage avec les numéros de séquence. Aucun
+  changement de comportement.
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille
