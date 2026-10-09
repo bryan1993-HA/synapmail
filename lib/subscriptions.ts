@@ -389,9 +389,12 @@ export function isPrivateAddress(address: string): boolean {
   const ip = address.trim().toLowerCase().replace(/^\[|\]$/g, '')
   const mapped = ip.match(/^(?:::ffff:|::)(\d{1,3}(?:\.\d{1,3}){3})$/)
   if (mapped) return isPrivateAddress(mapped[1])
-  const v6mapped = ip.match(/^(?:::ffff:)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
-  if (v6mapped) {
-    const [hi, lo] = v6mapped.slice(1).map(h => parseInt(h, 16))
+  // An IPv4 address carried inside IPv6, judged as the IPv4 it stands for:
+  // `::ffff:a9fe:a9fe` (mapped), `2002:a9fe:a9fe::` (6to4), `64:ff9b::a9fe:a9fe` (NAT64).
+  const v6carried = ip.match(/^(?:::ffff:|64:ff9b::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+    ?? ip.match(/^2002:([0-9a-f]{1,4}):([0-9a-f]{1,4})(?::|$)/)
+  if (v6carried) {
+    const [hi, lo] = v6carried.slice(1).map(h => parseInt(h, 16))
     return isPrivateAddress([hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join('.'))
   }
   if (ip.includes(':')) {

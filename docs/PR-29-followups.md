@@ -124,4 +124,6 @@ Classé par sévérité. Cocher au fur et à mesure.
   une fois par `RootLayout()`) — un aller-retour DB évitable, pas un bug.
 - `lib/subscriptions.ts` — `isPrivateAddress()` ne décode pas les encodages 6to4/NAT64 d'IPv4 dans une
   adresse IPv6 (ex. `2002:a9fe:a9fe::` pour `169.254.169.254`), malgré le commentaire de la fonction qui
-  prétend couvrir ce cas ; exploitabilité réelle faible (6to4/NAT64 généralement désactivés en conteneur).
+  prétend couvrir ce cas ; exploitabilité réelle faible (6to4/NAT64 généralement désactivés en conteneur). —
+  Fixed: `2002:hhhh:hhhh::/48` (6to4) and `64:ff9b::hhhh:hhhh` (NAT64) are decoded to their IPv4 and judged
+  as it; `scripts/check-subscriptions.mjs` refuses 4 such addresses and allows 2 public ones (red on the old code).

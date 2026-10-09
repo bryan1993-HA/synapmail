@@ -7,6 +7,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **La frontière « adresse privée » des désabonnements ignorait les IPv4 portées en 6to4 et NAT64**
+  (`lib/subscriptions.ts`) : `2002:hhhh:hhhh::/48` et `64:ff9b::hhhh:hhhh` sont désormais décodées et jugées comme
+  l'IPv4 qu'elles portent, comme `::ffff:` l'était déjà. Banc : `scripts/check-subscriptions.mjs` refuse 4 de ces
+  adresses et en autorise 2 publiques (rouge sur l'ancien code).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille
