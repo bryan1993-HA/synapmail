@@ -60,11 +60,14 @@ Classé par sévérité. Cocher au fur et à mesure.
   compares NFC forms like `samePath()`, and `rewritePath()` slices on the normalised prefix (the two forms can
   differ in length). Bench: `scripts/check-folder-actions.mjs` (`--negative` replays the raw-string rule and must go red).
 
-- [ ] **`components/theme/ThemeProvider.tsx`** — flash encore présent (dark→light→dark) au montage pour
+- [x] **`components/theme/ThemeProvider.tsx`** — flash encore présent (dark→light→dark) au montage pour
   `theme='system'` avec OS en mode sombre : `systemDark` démarre à `useState(false)` au lieu de lire
   `prefers-color-scheme` immédiatement, donc le premier rendu recalcule `resolvedTheme='light'` et retire
   la classe `dark` déjà posée par le script bloquant avant peinture. Contredit l'objectif explicite "no
-  flash" de la réécriture.
+  flash" de la réécriture. — Fixed: `systemDark` is initialised lazily from `prefersDark()` on the first
+  client render, so the apply effect confirms the class the blocking script set instead of removing it;
+  `resolvedTheme` is rendered by no component, so the SSR/client difference cannot break hydration.
+  Bench: `scripts/check-theme-mount.mjs` (`--negative` replays `useState(false)` and must go red).
 
 ## 🟡 Bugs réels, sévérité moyenne
 

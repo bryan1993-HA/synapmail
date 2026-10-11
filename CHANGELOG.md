@@ -58,6 +58,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   courrier porte déjà : cartes clés par `originKey()`, rappel de suppression avec le `MessageOrigin` complet, requête
   adressée via `messageHref()`. Banc : `scripts/check-thread-origin.mjs` (pur, `--negative` réinjecte les lignes
   clés par uid et doit tomber — 2 assertions).
+- **Thème « système » sur un OS sombre : flash sombre → clair → sombre à chaque chargement**
+  (`components/theme/ThemeProvider.tsx`) : le script bloquant de la mise en page racine posait la classe `dark` avant
+  le premier rendu, puis `ThemeProvider` montait avec `systemDark = useState(false)` — son premier rendu résolvait
+  `system` en clair, l'effet d'application retirait la classe, et l'effet `matchMedia` ne la remettait qu'au rendu
+  suivant. `systemDark` est désormais initialisé paresseusement depuis `prefersDark()` (l'aide du fournisseur
+  lui-même, `false` côté serveur), et le `setSystemDark` devenu redondant de l'effet d'écoute est retiré.
+  `resolvedTheme` n'est rendu par aucun composant : la différence serveur/client ne peut pas casser l'hydratation.
+  Banc : `scripts/check-theme-mount.mjs` (rejoue le montage contre un faux `<html>` avec le vrai `lib/theme.ts` ;
+  `--negative` réinjecte `useState(false)` et doit tomber — 2 assertions).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille
