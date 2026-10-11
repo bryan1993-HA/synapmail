@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import useSWR from 'swr'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 import { BookOpen } from 'lucide-react'
 import {
   SettingsPage, SettingsHeader, SettingsSection, SettingsRow, SettingsDivider,
@@ -22,7 +23,7 @@ const PER_PAGE_OPTIONS = [10, 20, 30, 50, 100]
 export default function ReadingPage() {
   const t = useTranslations('settings.reading')
   const tc = useTranslations('settings.common')
-  const { data, mutate } = useSWR<{ data: UserSettings }>('/api/settings', fetcher)
+  const { data } = useSWR<{ data: UserSettings }>(SETTINGS_KEY, fetcher)
   const settings = data?.data
 
   const [messagesPerPage, setMessagesPerPage] = useState(30)
@@ -51,17 +52,12 @@ export default function ReadingPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages_per_page: messagesPerPage,
-          thread_view: threadView,
-          reading_pane: readingPane,
-          start_view: startOnDashboard ? 'dashboard' : 'inbox',
-        }),
+      await saveSettings({
+        messages_per_page: messagesPerPage,
+        thread_view: threadView,
+        reading_pane: readingPane,
+        start_view: startOnDashboard ? 'dashboard' : 'inbox',
       })
-      await mutate()
       setSuccess(true)
       setTimeout(() => setSuccess(false), 2000)
     } finally {

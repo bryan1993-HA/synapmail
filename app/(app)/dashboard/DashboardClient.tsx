@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { openCompose as openComposeFrom } from '@/lib/compose'
 import { folderHref } from '@/app/(app)/mail/mailboxUrl'
-import useSWR, { mutate as globalMutate } from 'swr'
+import useSWR from 'swr'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 import { useTranslations, useLocale } from 'next-intl'
 import {
   Mail, Send, Eye, Clock, Sparkles, BarChart3, Users, Filter,
@@ -323,17 +324,11 @@ export function DashboardClient() {
   // Account scope — null = all accounts combined. Persisted server-side per user.
   const { data: settingsRes, isLoading: settingsLoading } = useSWR<{
     data: { dashboard_account_id: string | null; dashboard_card_order: DashboardCardId[] | null }
-  }>('/api/settings', fetcher)
+  }>(SETTINGS_KEY, fetcher)
   const filterAccount = settingsRes?.data?.dashboard_account_id ?? null
   const filterReady = !settingsLoading
   const changeFilter = (id: string | null) => {
-    globalMutate('/api/settings', (curr: { data: Record<string, unknown> } | undefined) =>
-      curr ? { data: { ...curr.data, dashboard_account_id: id } } : curr, false)
-    fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dashboard_account_id: id }),
-    }).then(() => globalMutate('/api/settings'))
+    void saveSettings({ dashboard_account_id: id })
   }
 
   // L'ordre des cartes vient du serveur et passe par la règle partagée : une valeur
@@ -343,13 +338,7 @@ export function DashboardClient() {
     [settingsRes],
   )
   const saveCardOrder = (order: DashboardCardId[] | null) => {
-    globalMutate('/api/settings', (curr: { data: Record<string, unknown> } | undefined) =>
-      curr ? { data: { ...curr.data, dashboard_card_order: order } } : curr, false)
-    fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dashboard_card_order: order }),
-    }).then(() => globalMutate('/api/settings'))
+    void saveSettings({ dashboard_card_order: order })
   }
   const [draggedCard, setDraggedCard] = useState<DashboardCardId | null>(null)
   const [dropCard, setDropCard] = useState<DashboardCardId | null>(null)

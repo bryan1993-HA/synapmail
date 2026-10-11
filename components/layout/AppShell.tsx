@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import useSWR, { mutate } from 'swr'
+import useSWR from 'swr'
 import { Omnibar, OMNIBAR } from './Omnibar'
 import { Sidebar, SIDEBAR } from './Sidebar'
 import { UpdateBanner } from './UpdateBanner'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -13,7 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const t = useTranslations('mail')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   // SSR-safe default (false) until the settings SWR resolves after mount — no hydration mismatch.
-  const { data: settingsData } = useSWR<{ data: { sidebar_collapsed: boolean } }>('/api/settings', fetcher)
+  const { data: settingsData } = useSWR<{ data: { sidebar_collapsed: boolean } }>(SETTINGS_KEY, fetcher)
   const sidebarCollapsed = settingsData?.data?.sidebar_collapsed ?? false
   // One button, two effects: above `lg` the bar is a column and folds; below it the
   // bar is a drawer and opens. Read from the SAME breakpoint the <aside> is hidden on,
@@ -28,14 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [])
 
   const toggleCollapse = () => {
-    const next = !sidebarCollapsed
-    mutate('/api/settings', (curr: { data: Record<string, unknown> } | undefined) =>
-      curr ? { data: { ...curr.data, sidebar_collapsed: next } } : curr, false)
-    fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sidebar_collapsed: next }),
-    }).then(() => mutate('/api/settings'))
+    void saveSettings({ sidebar_collapsed: !sidebarCollapsed })
   }
 
   return (

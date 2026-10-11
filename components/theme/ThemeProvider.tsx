@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import useSWR, { mutate as globalMutate } from 'swr'
+import useSWR from 'swr'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 import { isPublicPath } from '@/lib/publicPaths'
 import {
   DARK_MEDIA_QUERY,
@@ -51,7 +52,7 @@ export function ThemeProvider({
   // there is no session: nothing is requested and the cookie is enough — otherwise every
   // /login load would log a 401 in the console.
   const pathname = usePathname()
-  const { data: settings } = useSWR<{ data?: { theme?: string } }>(isPublicPath(pathname) ? null : '/api/settings', fetcher)
+  const { data: settings } = useSWR<{ data?: { theme?: string } }>(isPublicPath(pathname) ? null : SETTINGS_KEY, fetcher)
   const hydratedFromServer = useRef(false)
 
   useEffect(() => {
@@ -81,20 +82,7 @@ export function ThemeProvider({
     setThemeState(next)
     setSystemDark(prefersDark())
     document.cookie = themeCookieValue(next)
-    // Optimistic on the shared SWR key, then revalidate once the PATCH has landed.
-    globalMutate(
-      '/api/settings',
-      (curr: { data?: Record<string, unknown> } | undefined) =>
-        curr?.data ? { ...curr, data: { ...curr.data, theme: next } } : curr,
-      false
-    )
-    fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ theme: next }),
-    })
-      .catch(() => undefined)
-      .then(() => globalMutate('/api/settings'))
+    void saveSettings({ theme: next })
   }, [])
 
   const value = useMemo(

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import useSWR, { mutate as globalMutate } from 'swr'
+import useSWR from 'swr'
+import { SETTINGS_KEY, saveSettings } from '@/lib/settings'
 import { useTranslations } from 'next-intl'
 import { ACCENT, useAccountAccent } from './AccountAvatar'
 import { cn } from '@/lib/utils'
@@ -17,7 +18,6 @@ import type { GitHubRelease } from '@/app/api/updates/route'
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 /** Clé SWR partagée des préférences utilisateur (une seule source, cf. UI state persistence). */
-const SETTINGS_KEY = '/api/settings'
 /** Version supposée quand l'API n'a pas encore répondu : plus ancienne que toute release. */
 const FALLBACK_VERSION = '0.0.0'
 
@@ -107,19 +107,7 @@ export function UpdateBanner() {
   const handleDismiss = () => {
     if (!latest) return
     const version = latest.tag_name
-    globalMutate(
-      SETTINGS_KEY,
-      (curr: { data?: Record<string, unknown> } | undefined) =>
-        curr?.data ? { ...curr, data: { ...curr.data, update_dismissed_version: version } } : curr,
-      false
-    )
-    fetch(SETTINGS_KEY, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ update_dismissed_version: version }),
-    })
-      .catch(() => undefined)
-      .then(() => globalMutate(SETTINGS_KEY))
+    void saveSettings({ update_dismissed_version: version })
   }
 
   // Tant que la préférence serveur n'est pas chargée on n'affiche rien : sinon le

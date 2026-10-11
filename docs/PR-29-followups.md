@@ -81,10 +81,17 @@ Classé par sévérité. Cocher au fur et à mesure.
   requester that never settles. Bench: `scripts/check-subscriptions.mjs` (real TLS drip server on the
   loopback; `--negative` replays the inactivity-timeout requester and must see the socket still open).
 
-- [ ] **`components/layout/AccountAvatar.tsx`** — le switch de compte actif écrit `/api/settings` sans
+- [x] **`components/layout/AccountAvatar.tsx`** — le switch de compte actif écrit `/api/settings` sans
   `mutate()` du cache SWR partagé (contrairement au pattern documenté dans `CLAUDE.md` "UI state
   persistence"). Un changement de compte suivi d'un alt-tab avant la réponse du PATCH peut être annulé
-  silencieusement par la revalidation au focus.
+  silencieusement par la revalidation au focus. — Fixed: every settings write now goes through
+  `lib/settings.ts` `saveSettings()`, where the PATCH *is* the SWR mutation (optimistic value shown at
+  once, stale revalidations discarded while it is in flight, the answered row becomes the cache,
+  rollback on refusal). The documented two-step pattern (`mutate(..., false)` then a detached `fetch`)
+  had the same window open, only shorter, so the ten other writers were moved onto the same helper.
+  Bench: `scripts/check-settings-write.mjs` (pure, real `swr` bookkeeping; `--negative` replays the
+  two-step write and must go red) and `scripts/check-settings-race-browser.mjs` (real click, PATCH held
+  on the wire, forced focus revalidation; `--negative` replays the bare-fetch switch).
 
 - [ ] **`app/api/messages/search/route.ts`** — la branche de streaming NDJSON (`scope=all&stream=1`) n'a
   aucune garde contre les appels Bearer/machine, alors que le commentaire du fichier et `docs/API.md`
