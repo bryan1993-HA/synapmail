@@ -127,10 +127,15 @@ Classé par sévérité. Cocher au fur et à mesure.
   promised. Bench: `scripts/check-stream-lookup.mjs` (the real route imported with a rejecting lookup;
   `--negative` loads a copy without the guard and must go red).
 
-- [ ] **`components/layout/Sidebar.tsx`** — le listener de fermeture du sélecteur de compte est bindé sur
+- [x] **`components/layout/Sidebar.tsx`** — le listener de fermeture du sélecteur de compte est bindé sur
   `click` au lieu de `mousedown` (contrairement à tous les autres nouveaux menus du PR). Un clic droit sur
   un dossier pour ouvrir `FolderContextMenu` ne ferme pas le sélecteur de compte — les deux menus peuvent
-  se superposer.
+  se superposer. — Fixed: the dismiss stays on `click` on purpose (the list is in the bar's flow, so
+  folding it on `mousedown` slides the row out from under the cursor before `mouseup` — the click lands
+  on whatever moved into its place); the same outside-target handler is now also bound to `contextmenu`,
+  which a right-click fires without ever reaching the click phase. Bench:
+  `scripts/check-account-picker-dismiss.mjs` (real mouse on the running app; `--negative` removes the
+  `contextmenu` dismiss and must see both menus open at once).
 
 - [x] **`lib/forward.ts`** — le plafond de 25 Mio sur le transfert multi-messages est vérifié sur la
   taille brute IMAP (`RFC822.SIZE`), mais les pièces jointes sont envoyées en base64 (+37% environ) par

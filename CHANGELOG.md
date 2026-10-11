@@ -96,6 +96,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   flux et perdait aussi les événements du planificateur (`scheduled_sent`, `rule_applied`, `account_share_accepted`).
   Une recherche en échec est journalisée et traitée comme « pas de compte » : le flux s'ouvre sans guet IMAP, comme le
   commentaire le promettait. Banc : `scripts/check-stream-lookup.mjs` (`--negative` : 5 assertions sur 6 tombent).
+- **Le sélecteur de compte restait ouvert sous le menu contextuel d'un dossier** (`components/layout/Sidebar.tsx`) : il
+  ne se repliait que sur un `click` extérieur, qu'un clic droit n'atteint jamais, et les deux menus se superposaient. Le
+  même gestionnaire est aussi branché sur `contextmenu` (le repli reste sur `click` et non `mousedown` : replier au
+  `mousedown` ferait glisser la ligne sous le curseur avant le relâchement). Banc :
+  `scripts/check-account-picker-dismiss.mjs` (vraie souris ; `--negative`).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille

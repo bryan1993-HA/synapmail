@@ -240,7 +240,7 @@ export function Sidebar({ onClose, collapsed = false }: SidebarProps) {
     return () => window.removeEventListener(ACCOUNT_CHANGE_EVENT, onAccountChange)
   }, [])
 
-  // Close the account dropdown on outside click / Escape
+  // Close the account dropdown on outside click / right-click / Escape
   useEffect(() => {
     if (!accountOpen) return
     // On `click`, NOT on `mousedown`: the list is in the bar's flow, so folding it pulls
@@ -248,14 +248,19 @@ export function Sidebar({ onClose, collapsed = false }: SidebarProps) {
     // under the cursor before mouseup, and the browser then resolves the click on
     // whatever slid into its place — the "the dismiss ate my click" bug the design rule
     // forbids. By the click phase the target is already settled on the unshifted layout.
-    const onClick = (e: MouseEvent) => {
+    // A right-click never reaches the click phase, so `contextmenu` is watched too:
+    // its target (a folder row, a message) is already resolved when it fires, and the
+    // context menu it opens is anchored to the cursor, not to the row that then slides.
+    const onOutside = (e: MouseEvent) => {
       if (accountBoxRef.current && !accountBoxRef.current.contains(e.target as Node)) setAccountOpen(false)
     }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAccountOpen(false) }
-    document.addEventListener('click', onClick)
+    document.addEventListener('click', onOutside)
+    document.addEventListener('contextmenu', onOutside)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('click', onClick)
+      document.removeEventListener('click', onOutside)
+      document.removeEventListener('contextmenu', onOutside)
       document.removeEventListener('keydown', onKey)
     }
   }, [accountOpen])
