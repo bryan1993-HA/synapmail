@@ -17,12 +17,17 @@ Classé par sévérité. Cocher au fur et à mesure.
   exactly one path segment, so no resolved path can leave the root. Bench: `scripts/check-folder-actions.mjs`
   (`--negative` replays the old rule and must go red).
 
-- [ ] **`app/api/ai/action/route.ts`** accepte désormais l'auth Bearer (`authenticate()` au lieu de
+- [x] **`app/api/ai/action/route.ts`** accepte désormais l'auth Bearer (`authenticate()` au lieu de
   `auth()`) alors que cette route n'est pas dans la liste documentée des routes Bearer de `CLAUDE.md`
   ("Everything else... stays session-only"), et il n'y a aucune limite de taille sur `content`. Une clé
   API émise pour du simple accès mail peut driver l'assistant IA (payant) avec un contenu arbitrairement
   gros et répété — épuisement de quota / coût, sans rate-limiting existant. Fix : soit repasser la route
   en session-only, soit l'ajouter explicitement à la liste documentée + plafonner la taille de `content`.
+  — Fixed: the route stays Bearer (scope `ai:use`, already listed in `docs/API.md` and `docs/openapi.json`;
+  `CLAUDE.md`'s stale "first lot" list now points at `ROUTE_SCOPES` as the single source) and refuses
+  `content` + `context` above `AI_CONTENT_MAX_CHARS` (200 000 chars, `lib/ai.ts`) with `413 { error, limit }`
+  before any database or provider work. Bench: `scripts/check-ai-content-limit.mjs` (`--negative` replays the
+  unbounded route and must go red). No rate limit yet — that is the separate follow-up already noted in `CLAUDE.md`.
 
 - [x] **`lib/subscriptions.ts` — `mailtoSubject()`** ne fait qu'un `.trim()` sur le `subject=` d'un lien
   `mailto:` extrait d'un header `List-Unsubscribe` **contrôlé par l'expéditeur du mail**, avant de le
