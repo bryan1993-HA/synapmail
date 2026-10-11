@@ -441,7 +441,7 @@ function OmnibarInner({ onMenu, menuLabel, menuExpanded }: OmnibarProps) {
         </IconTooltip>
         {/* Lot H3c : « Relever » passe AVANT « Nouveau message » (demande de Nicolas).
             Sa définition reste celle de MAIL_TOOLBAR_GROUPS — seul l'endroit où le
-            header la rend change ; le menu « … » la garde en tête. */}
+            header la rend change ; toujours visible, elle ne passe jamais dans le menu « … ». */}
         <MailToolbarLead shown={onMail} />
         <IconTooltip label={t('compose')} shortcut={COMPOSE_SHORTCUT}>
           <button

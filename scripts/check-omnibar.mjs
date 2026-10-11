@@ -785,6 +785,10 @@ page.setDefaultNavigationTimeout(120000)
       const r = box.getBoundingClientRect()
       return {
         actions: [...box.querySelectorAll('[data-mail-action]')].map(b => b.dataset.mailAction),
+        // The actions still rendered in the header itself (lead group + bar): the
+        // menu must list exactly the declared ones that are NOT among these.
+        inline: [...document.querySelectorAll('header [data-mail-action]')]
+          .filter(b => !box.contains(b)).map(b => b.dataset.mailAction),
         inside: r.left >= 0 && r.right <= document.documentElement.clientWidth
           && r.top >= 0 && r.bottom <= document.documentElement.clientHeight,
         rect: { x: r.x, y: r.y, w: r.width, h: r.height },
@@ -792,9 +796,10 @@ page.setDefaultNavigationTimeout(120000)
     })
     if (!menu) failures.push('mobile: a real tap on « … » opened no menu')
     else {
-      console.log(`mobile: tap « … » -> ${menu.actions.length} actions (${menu.actions.join(',')}), entirely on screen=${menu.inside}`)
-      if (menu.actions.join(',') !== TOOLBAR_ORDER.join(','))
-        failures.push(`mobile: the « … » menu lists ${menu.actions.join(',')}, MAIL_TOOLBAR_GROUPS declares ${TOOLBAR_ORDER.join(',')}`)
+      const expected = TOOLBAR_ORDER.filter(a => !menu.inline.includes(a))
+      console.log(`mobile: tap « … » -> ${menu.actions.length} actions (${menu.actions.join(',')}), inline=${menu.inline.join(',')}, entirely on screen=${menu.inside}`)
+      if (menu.actions.join(',') !== expected.join(','))
+        failures.push(`mobile: the « … » menu lists ${menu.actions.join(',')}, the overflowed part of MAIL_TOOLBAR_GROUPS is ${expected.join(',')}`)
       if (!menu.inside) failures.push(`mobile: the « … » menu leaves the screen (${JSON.stringify(menu.rect)})`)
     }
     await page.keyboard.press('Escape')

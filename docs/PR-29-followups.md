@@ -144,9 +144,13 @@ Classé par sévérité. Cocher au fur et à mesure.
   fetch is bounded by the server ceiling from `lib/smtpSize.ts` (decoded bytes, base64 cost and envelope
   reserve already deducted), resolved once before the fetch. Bench: `scripts/check-forward-decision.mjs`.
 
-- [ ] **`components/layout/MailToolbar.tsx`** — le menu "…" de débordement affiche tous les groupes de la
+- [x] **`components/layout/MailToolbar.tsx`** — le menu "…" de débordement affiche tous les groupes de la
   barre d'outils au lieu de seulement ceux qui débordent réellement. Sur une largeur où un seul groupe
-  déborde, le menu duplique les groupes déjà visibles en ligne.
+  déborde, le menu duplique les groupes déjà visibles en ligne. — Fixed: the menu renders the `overflowed`
+  subset the bar already computes (the same list that decides what stays inline), so a group is either
+  inline or in the menu, never both. Bench: `scripts/check-toolbar-overflow.mjs` (Chrome, read-only, walks
+  the viewport down and asserts inline + menu = the declared groups at every fold; `--negative` re-injects
+  the "every group" menu and must go red).
 
 ## Mineur / dette documentaire (non bloquant)
 
