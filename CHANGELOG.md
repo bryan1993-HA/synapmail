@@ -7,6 +7,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Fixed
+- **L'aperçu du favicon choisi par l'administrateur ne passe plus par une URL dérivée du fichier**
+  (`components/admin/BrandingSection.tsx`) : l'analyse CodeQL signalait en « haute » le fichier choisi → `URL.createObjectURL()`
+  → `<img src>` (« DOM text reinterpreted as HTML »). Le contrôle du type déclaré ajouté avant la fusion de #30 ne suffisait
+  pas : ce n'est pas un assainisseur que CodeQL reconnaît, l'alerte restait. L'aperçu est désormais décodé par
+  `createImageBitmap()` et dessiné dans un `<canvas>` de la même taille ; plus aucun `createObjectURL`/`revokeObjectURL`
+  dans le fichier, le seul `src` restant est l'URL serveur de l'icône enregistrée. Un fichier que le navigateur ne sait
+  pas décoder reçoit l'erreur traduite existante `branding_bad_type`, sans aperçu. Bancs : `scripts/check-branding.mjs`
+  (rougit sous `--negative` quand l'ancien chemin est remis) et `scripts/check-branding-preview-browser.mjs` (Chrome,
+  PNG et ICO synthétiques → pixels dans le canvas, fichier texte renommé refusé, zéro URL d'objet, console vide).
 - **La liste du courrier était demandée plusieurs fois à l'ouverture, dont une fois à la mauvaise taille**
   (`components/layout/MessageList.tsx`, `hooks/useEmailNotifications.ts`, `app/(app)/mail/MailClient.tsx`) : la liste
   partait avec le repli `messages_per_page ?? 30` avant que `/api/settings` ne réponde, puis repartait à la taille
