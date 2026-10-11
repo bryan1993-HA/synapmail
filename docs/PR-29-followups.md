@@ -8,11 +8,14 @@ Classé par sévérité. Cocher au fur et à mesure.
 
 ## 🔴 Sécurité — à traiter en priorité
 
-- [ ] **`lib/folderActions.ts` — `sanitizeFolderName()`** n'exclut pas les segments `.` / `..`.
+- [x] **`lib/folderActions.ts` — `sanitizeFolderName()`** n'exclut pas les segments `.` / `..`.
   Un nom de dossier `..` part tel quel vers `client.mailboxCreate()`/`mailboxRename()` — sur un serveur
   IMAP Maildir (Dovecot/Courier) qui mappe les noms de boîtes sur de vrais chemins fichiers, c'est un nom
   de mailbox en forme de traversée de répertoire. Fix : rejeter tout segment de path égal à `.` ou `..`
-  (et par prudence tout chemin résolu qui sortirait de la racine du compte).
+  (et par prudence tout chemin résolu qui sortirait de la racine du compte). — Fixed: a bare `.` or `..`
+  (trimmed) is refused as a name; since the account delimiter is already refused inside a name, a name is
+  exactly one path segment, so no resolved path can leave the root. Bench: `scripts/check-folder-actions.mjs`
+  (`--negative` replays the old rule and must go red).
 
 - [ ] **`app/api/ai/action/route.ts`** accepte désormais l'auth Bearer (`authenticate()` au lieu de
   `auth()`) alors que cette route n'est pas dans la liste documentée des routes Bearer de `CLAUDE.md`
@@ -37,12 +40,14 @@ Classé par sévérité. Cocher au fur et à mesure.
   `app/(app)/mail/MailClient.tsx` `handleThreadDelete(uid)` (filtre/`find` par uid nu) — peut supprimer ou
   cibler le mauvais message du fil.
 
-- [ ] **`lib/folderActions.ts` — `isDescendant()`** ne fait pas la normalisation Unicode NFC que
+- [x] **`lib/folderActions.ts` — `isDescendant()`** ne fait pas la normalisation Unicode NFC que
   `samePath()` a justement été écrite pour ajouter (commentaire de `samePath()` : un serveur IMAP peut
   renvoyer un nom en NFD). Utilisée pour `hasChildren` (règle "un parent ne peut pas être supprimé") et
   pour la réécriture de chemin au renommage — un dossier enfant dont le chemin diffère du parent
   uniquement par la forme de normalisation Unicode n'est pas détecté comme enfant : le parent peut être
-  supprimé et orpheline l'enfant, et le renommage saute la réécriture de cet enfant.
+  supprimé et orpheline l'enfant, et le renommage saute la réécriture de cet enfant. — Fixed: `isDescendant()`
+  compares NFC forms like `samePath()`, and `rewritePath()` slices on the normalised prefix (the two forms can
+  differ in length). Bench: `scripts/check-folder-actions.mjs` (`--negative` replays the raw-string rule and must go red).
 
 - [ ] **`components/theme/ThemeProvider.tsx`** — flash encore présent (dark→light→dark) au montage pour
   `theme='system'` avec OS en mode sombre : `systemDark` démarre à `useState(false)` au lieu de lire
