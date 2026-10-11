@@ -3,7 +3,7 @@ import { createClient, type AccountConfig } from './imap'
 
 // Reconnect delay: doubles on every failure, capped. A network drop must not hammer
 // the IMAP server, and a long outage must eventually find the mailbox again without
-// intervention.
+// intervention. Only a rejected login is never retried (see `run`).
 const RETRY_BASE_MS = 2_000
 const RETRY_MAX_MS = 60_000
 
@@ -44,10 +44,8 @@ export function watchMailbox(
     let c: ImapFlow | null = null
     try {
       c = await createClient(account)
-      // Without an 'error' listener, a transport drop becomes an uncaught exception
-      // and takes the process down: imapflow emits, we absorb, and reconnection is
-      // handled by 'close'.
-      c.on('error', () => {})
+      // A transport drop is absorbed by createClient's 'error' listener; reconnection
+      // is handled by 'close'.
       const opened = c
       c.on('close', () => {
         if (client !== opened) return
@@ -68,10 +66,15 @@ export function watchMailbox(
       // requirement is under 5). `idle()` only returns when the IDLE ends, hence the
       // un-awaited call; its interruption surfaces through 'close'.
       void opened.idle().catch(() => {})
-    } catch {
-      // Connection refused, credentials rejected, mailbox missing: retry.
+    } catch (err) {
       if (c) void c.logout().catch(() => {})
       client = null
+      // Rejected credentials will not fix themselves: retrying that login every minute
+      // from every open tab is the pattern that gets the proxy's IP banned by fail2ban.
+      // The watcher gives up for good; the periodic refresh remains the safety net and
+      // the next stream (reload, account switch) tries the edited account again.
+      if ((err as { authenticationFailed?: boolean }).authenticationFailed) { stopped = true; return }
+      // Connection refused, transport drop, mailbox missing: retry.
       schedule()
     }
   }

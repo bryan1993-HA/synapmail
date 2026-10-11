@@ -127,7 +127,19 @@ export async function createClient(account: AccountConfig): Promise<ImapFlow> {
     connectionTimeout: 10000,
     greetingTimeout: 8000,
   })
-  await client.connect()
+  // Without an 'error' listener a transport drop becomes an uncaught exception and takes
+  // the process down; this must be attached BEFORE connect(): a drop during the handshake
+  // rejects connect() and then still emits 'error' (imapflow 1.7.2). Every pending command
+  // is rejected by imapflow's own close(), so the event carries nothing a caller needs.
+  client.on('error', () => {})
+  try {
+    await client.connect()
+  } catch (err) {
+    // A rejected login leaves the TCP socket open (imapflow 1.7.2 only tears it down on
+    // transport errors and timeouts) and the caller never sees the client to close it.
+    client.close()
+    throw err
+  }
   return client
 }
 
