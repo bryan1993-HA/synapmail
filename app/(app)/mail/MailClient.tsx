@@ -292,19 +292,19 @@ export function MailClient() {
     setCurrentMessage(null)
   }, [])
 
-  const handleThreadDelete = useCallback((uid: string) => {
+  // The card names its message by ORIGIN: a thread can hold the same uid twice
+  // (inbox copy and sent copy), and only the triplet tells them apart.
+  const handleThreadDelete = useCallback((origin: MessageOrigin) => {
     if (!selectedThread) return
-    const remaining = selectedThread.filter(m => m.uid !== uid)
+    const remaining = selectedThread.filter(m => !sameOrigin(originOfMessage(m), origin))
+    if (remaining.length === selectedThread.length) return
     if (remaining.length === 0) {
       handleDelete()
     } else {
       setSelectedThread(remaining)
     }
-    const msg = selectedThread.find(m => m.uid === uid)
-    if (msg) {
-      fetch(`/api/messages/${uid}?account=${msg.accountId}&folder=${encodeURIComponent(msg.folder || folder)}`, { method: 'DELETE' })
-    }
-  }, [selectedThread, folder, handleDelete])
+    fetch(messageHref(origin), { method: 'DELETE' })
+  }, [selectedThread, handleDelete])
 
   const handleBack = useCallback(() => {
     setShowReadingPane(false)

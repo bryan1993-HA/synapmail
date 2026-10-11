@@ -8,7 +8,7 @@ import type { Message } from '@/types/email'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { parseDate } from '@/lib/dates'
-import { messageHref, originKey, originOfMessage } from '@/lib/mailOrigin'
+import { messageHref, originKey, originOfMessage, type MessageOrigin } from '@/lib/mailOrigin'
 import { ThinScroll } from './ThinScroll'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -87,7 +87,7 @@ interface MessageCardProps {
   onToggle: () => void
   onReply?: (msg: Message) => void
   onForward?: (msg: Message) => void
-  onDelete?: (uid: string) => void
+  onDelete?: (origin: MessageOrigin) => void
   previewMsg: Message
 }
 
@@ -218,7 +218,7 @@ function MessageCard({ uid, accountId, folder, isExpanded, isLast, onToggle, onR
               variant="ghost"
               size="sm"
               className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-              onClick={() => onDelete?.(uid)}
+              onClick={() => onDelete?.({ accountId, folder, uid })}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
@@ -236,14 +236,19 @@ interface Props {
   accountId: string
   onReply?: (msg: Message) => void
   onForward?: (msg: Message) => void
-  onDelete?: (uid: string) => void
+  onDelete?: (origin: MessageOrigin) => void
 }
 
 export function ThreadPane({ threadMessages, subject, folder, accountId, onReply, onForward, onDelete }: Props) {
+  // Expanded cards are keyed by ORIGIN, not by uid: a thread mixing inbox and
+  // sent can hold two different messages under the same uid.
+  const cardKey = (msg: Message) => originKey(originOfMessage(msg))
+  const threadKeys = threadMessages.map(cardKey).join(',')
+
   // Last message expanded by default
-  const [expandedUids, setExpandedUids] = useState<Set<string>>(() => {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => {
     const s = new Set<string>()
-    if (threadMessages.length > 0) s.add(threadMessages[threadMessages.length - 1].uid)
+    if (threadMessages.length > 0) s.add(cardKey(threadMessages[threadMessages.length - 1]))
     return s
   })
 
@@ -251,9 +256,9 @@ export function ThreadPane({ threadMessages, subject, folder, accountId, onReply
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (threadMessages.length > 0) {
-      setExpandedUids(new Set([threadMessages[threadMessages.length - 1].uid]))
+      setExpandedKeys(new Set([cardKey(threadMessages[threadMessages.length - 1])]))
     }
-  }, [threadMessages.map(m => m.uid).join(',')])
+  }, [threadKeys])
 
   if (threadMessages.length === 0) {
     return (
@@ -264,13 +269,13 @@ export function ThreadPane({ threadMessages, subject, folder, accountId, onReply
     )
   }
 
-  const toggleCard = (uid: string) => {
-    setExpandedUids(prev => {
+  const toggleCard = (key: string) => {
+    setExpandedKeys(prev => {
       const next = new Set(prev)
-      if (next.has(uid)) {
-        next.delete(uid)
+      if (next.has(key)) {
+        next.delete(key)
       } else {
-        next.add(uid)
+        next.add(key)
       }
       return next
     })
@@ -301,13 +306,13 @@ export function ThreadPane({ threadMessages, subject, folder, accountId, onReply
             inbox and sent, where the same uid names two different messages. */}
         {threadMessages.map((msg, idx) => (
           <MessageCard
-            key={originKey(originOfMessage(msg))}
+            key={cardKey(msg)}
             uid={msg.uid}
             accountId={msg.accountId || accountId}
             folder={msg.folder || folder}
-            isExpanded={expandedUids.has(msg.uid)}
+            isExpanded={expandedKeys.has(cardKey(msg))}
             isLast={idx === threadMessages.length - 1}
-            onToggle={() => toggleCard(msg.uid)}
+            onToggle={() => toggleCard(cardKey(msg))}
             onReply={onReply}
             onForward={onForward}
             onDelete={onDelete}
