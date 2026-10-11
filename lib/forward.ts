@@ -14,8 +14,11 @@
  */
 export const FORWARD_MAX_MESSAGES = 25
 
-/** An IMAP uid is a decimal integer. `1:*` is a valid sequence SET, so it is rejected here. */
-const UID_PATTERN = /^\d+$/
+/**
+ * An IMAP uid is a positive decimal integer written canonically: `1:*` is a
+ * sequence SET, `0` is not a uid, and `007` is not how any server spells 7.
+ */
+const UID_PATTERN = /^[1-9]\d*$/
 
 /** Error codes — the server returns them, the compose window translates them. */
 export const FORWARD_ERROR = {

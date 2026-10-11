@@ -56,6 +56,8 @@ for (const [label, body] of [
   ['a range', { ...valid, uids: ['1:500'] }],
   ['a wildcard', { ...valid, uids: ['*'] }],
   ['a negative uid', { ...valid, uids: ['-1'] }],
+  ['a zero uid', { ...valid, uids: ['0'] }],
+  ['a uid with leading zeros (`007` is not how a server spells 7)', { ...valid, uids: ['007'] }],
   ['a non-string uid', { ...valid, uids: [12] }],
   ['an empty selection', { ...valid, uids: [] }],
   ['a missing origin account', { folder: 'INBOX', uids: ['1'] }],
