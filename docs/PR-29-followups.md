@@ -119,9 +119,13 @@ Classé par sévérité. Cocher au fur et à mesure.
   there, for all 26 callers. Bench: `scripts/check-idle-auth-stop.mjs` (fake IMAP server on loopback;
   `--negative` loads a copy of the module without the guard and must go red).
 
-- [ ] **`app/api/stream/route.ts`** — le lookup du `?account=` optionnel (pour le watch IMAP IDLE) n'a pas
+- [x] **`app/api/stream/route.ts`** — le lookup du `?account=` optionnel (pour le watch IMAP IDLE) n'a pas
   de try/catch. Une erreur DB transitoire plante toute la connexion SSE (500) au lieu de juste sauter le
   watch IMAP comme le commentaire le documente — tue aussi la livraison de `scheduled_sent`/`rule_applied`.
+  — Fixed: a rejected lookup is logged and treated as "no account" (`.catch(() => null)` on the one
+  call), so the stream opens with its scheduler events and no IMAP watch, exactly as the comment
+  promised. Bench: `scripts/check-stream-lookup.mjs` (the real route imported with a rejecting lookup;
+  `--negative` loads a copy without the guard and must go red).
 
 - [ ] **`components/layout/Sidebar.tsx`** — le listener de fermeture du sélecteur de compte est bindé sur
   `click` au lieu de `mousedown` (contrairement à tous les autres nouveaux menus du PR). Un clic droit sur
