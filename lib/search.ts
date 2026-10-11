@@ -388,10 +388,15 @@ export async function* mergeGenerators<T>(
 /**
  * Paramètre par lequel le client demande la restitution PROGRESSIVE : la réponse
  * est alors une suite de lignes JSON (NDJSON), une par dossier couvert, au lieu
- * d'un seul objet livré à la fin. Le contrat de l'objet final est identique, ce
- * qui laisse la portée « ce dossier » et tout appel machine inchangés.
+ * d'un seul objet livré à la fin. C'est un choix de l'appelant, clé Bearer
+ * comprise : sans lui, et sous la portée « ce dossier », la réponse reste l'objet
+ * JSON unique. Le contrat (`docs/openapi.json`) nomme le paramètre et le type de
+ * la réponse en flux, pour qu'un client généré ne le découvre pas en plantant sur
+ * `res.json()`.
  */
 export const STREAM_PARAM = 'stream'
+/** Ce que le flux annonce dans `Content-Type` — une seule orthographe, route et contrat. */
+export const STREAM_CONTENT_TYPE = 'application/x-ndjson; charset=utf-8'
 
 /** Une ligne de la réponse progressive : un dossier couvert, ce qu'il rapporte. */
 export type SearchStreamChunk<TMessage> = {
